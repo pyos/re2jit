@@ -7,6 +7,10 @@
 namespace re2jit {
     class Recompiler {
 
+    protected:
+        void *_prog;
+        void *_entry;
+
     public:
         enum Status {
             ERR_NO_JIT  = -2,  // unsupported opcode in regex / no regex assigned
@@ -16,8 +20,9 @@ namespace re2jit {
         };
 
         Recompiler();
-        Recompiler(const re2::Prog&);
-        Recompiler& operator = (const re2::Prog&);
+        Recompiler(re2::Prog&);
+        Recompiler& operator = (re2::Prog&);
+        Recompiler& operator = (re2::Prog*);
        ~Recompiler();
 
         Status Run(const re2::StringPiece& text, RE2::Anchor anchor = RE2::ANCHOR_START,

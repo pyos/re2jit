@@ -7,6 +7,8 @@
 
 
 class RE2jit : public RE2 {
+
+protected:
     re2jit::Recompiler _cre;
 
 public:
