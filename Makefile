@@ -8,12 +8,14 @@ _require_vendor = \
 
 _require_headers = \
 	re2jit/re2jit.h \
-	re2jit/recompiler.h
+	re2jit/jitprog.h \
+	re2jit/debug.h
 
 
 _require_objects = \
 	obj/re2jit.o \
-	obj/recompiler.o
+	obj/jitprog.o \
+	obj/debug.o
 
 
 _require_library = \
@@ -21,9 +23,8 @@ _require_library = \
 
 
 _require_test_run = \
-	test/framework \
-	test/hello_world \
-	test/libjitplus
+	test/basic \
+	test/jit
 
 
 ARCHIVE = ar rcs

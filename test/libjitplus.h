@@ -19,17 +19,14 @@ int mul_add(int x, int y, int z)
 
 int build_mul_add(jit_context *context)
 {
-    jit_type_t params[3] = { jit_type_int, jit_type_int, jit_type_int };
-    jit_type_t signature = jit_type_create_signature(jit_abi_cdecl, jit_type_int, params, 3, 1);
-
-    mul_add_jit = new jit_function(*context, signature);
+    mul_add_jit = new jit_function(*context,
+        jit_function::signature_helper(jit_type_int, jit_type_int, jit_type_int, jit_type_int, jit_function::end_params));
     mul_add_jit->build_start();
     jit_value x = mul_add_jit->get_param(0);
     jit_value y = mul_add_jit->get_param(1);
     jit_value z = mul_add_jit->get_param(2);
-    jit_value a = mul_add_jit->insn_mul(x, y);
-    jit_value b = mul_add_jit->insn_add(a, z);
-    mul_add_jit->insn_return(b);
+    mul_add_jit->insn_return(x * y + z);
+
     int r = mul_add_jit->compile();
     mul_add_jit->build_end();
 
