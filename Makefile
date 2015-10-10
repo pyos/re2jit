@@ -22,13 +22,14 @@ _require_library = \
 
 _require_test_run = \
 	test/framework \
-	test/hello_world
+	test/hello_world \
+	test/libjitplus
 
 
 ARCHIVE = ar rcs
 INSTALL = install -D
 CCFLAGS = ./ccflags
-COMPILE = $(CXX) $(CXXFLAGS) -Wall -Wextra -Werror -Wno-unused-parameter -std=c++11 -fPIC -I. -I./re2 -L./obj -L./re2/obj
+COMPILE = $(CXX) $(CXXFLAGS) -Wall -Wextra -Werror -Wno-psabi -Wno-unused-parameter -std=c++11 -fPIC -I. -I./re2 -L./obj -L./re2/obj
 DYNLINK = $(CXX) -shared -o
 
 
