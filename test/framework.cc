@@ -33,8 +33,8 @@ struct TestCase {
 };
 
 
-// TS = test definition file, TH = accompanying header file.
-#include escape_macro(TH)
+// TEST = test definition file, TESTH = accompanying header file.
+#include escape_macro(TESTH)
 
 
 TestCase TESTS[] = {
@@ -43,7 +43,7 @@ TestCase TESTS[] = {
     #define test_case(name) test_case_footer, test_case_header(name)
 
     test_case_header("") return Result::Fail("should never run");
-    #include escape_macro(TS)
+    #include escape_macro(TEST)
     test_case_footer
 };
 
@@ -61,12 +61,12 @@ TestCase TESTS[] = {
 int main()
 {
     for (size_t i = 1; i < sizeof(TESTS) / sizeof(*TESTS); i++) {
-        fprintf(stdout, FG_YELLOW "%zu" FG_RESET ". %s\r", i, TESTS[i].name.c_str());
+        fprintf(stdout, FG_YELLOW "%zu" FG_RESET ". %s", i, TESTS[i].name.c_str());
         fflush(stdout);
 
         auto r = TESTS[i].fn();
 
-        fprintf(stdout, "%s%zu" FG_RESET "\n",
+        fprintf(stdout, "\r%s%zu" FG_RESET "\n",
             r.state == Result::PASS ? FG_GREEN  :
             r.state == Result::FAIL ? FG_RED    :
             r.state == Result::SKIP ? FG_YELLOW : "", i);

@@ -21,11 +21,13 @@ _require_library = \
 
 
 _require_test_run = \
+	test/framework \
 	test/hello_world
 
 
 ARCHIVE = ar rcs
 INSTALL = install -D
+CCFLAGS = ./ccflags
 COMPILE = $(CXX) $(CXXFLAGS) -Wall -Wextra -Werror -Wno-unused-parameter -std=c++11 -fPIC -I. -I./re2 -L./obj -L./re2/obj
 DYNLINK = $(CXX) -shared -o
 
@@ -69,4 +71,4 @@ obj/%.o: re2jit/%.cc $(_require_headers)
 
 obj/test/%: test/%.cc test/%.h test/framework.cc $(_require_library) $(_require_vendor)
 	@mkdir -p obj/test
-	$(COMPILE) -DTS=$< -DTH=$(basename $<).h -pthread -o $@ test/framework.cc -lre2jit -lre2
+	$(COMPILE) -DTEST=$< -DTESTH=$(basename $<).h -pthread -o $@ test/framework.cc `$(CCFLAGS) $(basename $<).h`
