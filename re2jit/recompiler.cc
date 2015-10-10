@@ -1,5 +1,5 @@
-#include "re2/prog.h"
-#include "recompiler.h"
+#include <re2/prog.h>
+#include <re2jit/recompiler.h>
 
 
 using namespace re2jit;

@@ -1,35 +1,72 @@
-CXX    ?= g++
-CFLAGS ?= -Wall -Wextra -Werror -Wno-unused-parameter
-_CFLAGS = $(CFLAGS) -std=c++11 -fPIC -I. -I./re2 -L. -L./re2/obj
+CXX      ?= g++
+CXXFLAGS ?= -O3
 
-HDRS = re2jit.h recompiler.h
-OBJS = re2jit.o recompiler.o
 
-.PHONY: all clean re2
-.PRECIOUS: %.o
+_require_vendor = \
+	re2/obj/libre2.a
 
-all: libre2jit.so
+
+_require_headers = \
+	re2jit/re2jit.h \
+	re2jit/recompiler.h
+
+
+_require_objects = \
+	obj/re2jit.o \
+	obj/recompiler.o
+
+
+_require_library = \
+	obj/libre2jit.a
+
+
+_require_test_run = \
+	test/hello_world
+
+
+ARCHIVE = ar rcs
+INSTALL = install -D
+COMPILE = $(CXX) $(CXXFLAGS) -Wall -Wextra -Werror -Wno-unused-parameter -std=c++11 -fPIC -I. -I./re2 -L./obj -L./re2/obj
+DYNLINK = $(CXX) -shared -o
+
+
+.PHONY: all clean test test/%
+.PRECIOUS: \
+	obj/%.o \
+	obj/libre2.a \
+	obj/libre2.so \
+	obj/test/%
+
+
+test: $(_require_test_run)
+test/%: ./obj/test/%; ./$<
+
 
 clean:
-	rm -f $(OBJS) examples/*.bin tests/*.bin libre2jit.a libre2jit.so
+	rm -rf obj
 
-re2/obj/libre2.a: .gitmodules
+
+re2: .gitmodules
+	git submodule update --init re2
+
+
+re2/obj/libre2.a: re2 .git/modules/re2/refs/heads/master
 	$(MAKE) -C re2 obj/libre2.a
 
-libre2jit.a: $(OBJS)
-	ar rcs $@ $^
 
-libre2jit.so: $(OBJS)
-	$(CXX) -shared -o $@ $^
+obj/libre2jit.a: $(_require_objects)
+	$(ARCHIVE) $@ $^
 
-%.o: %.cc $(HDRS)
-	$(CXX) $(_CFLAGS) -c -o $@ $<
 
-examples/%.bin: examples/%.cc libre2jit.a
-	$(CXX) $(_CFLAGS) -pthread -o $@ $< -lre2jit -lre2
+obj/libre2jit.so: $(_require_objects)
+	$(DYNLINK) $@ $^
 
-tests/%.bin: tests/%.cc tests/0-template.cc tests/0-template-footer.cc libre2jit.a re2/obj/libre2.a
-	$(CXX) $(_CFLAGS) -pthread -I./tests -o $@ $< -lre2jit -lre2
 
-test: tests/1-basic.bin
-	./tests/1-basic.bin
+obj/%.o: re2jit/%.cc $(_require_headers)
+	@mkdir -p obj
+	$(COMPILE) -c -o $@ $<
+
+
+obj/test/%: test/%.cc test/%.h test/framework.cc $(_require_library) $(_require_vendor)
+	@mkdir -p obj/test
+	$(COMPILE) -DTS=$< -DTH=$(basename $<).h -pthread -o $@ test/framework.cc -lre2jit -lre2

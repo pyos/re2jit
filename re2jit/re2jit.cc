@@ -1,6 +1,6 @@
-#include "re2/regexp.h"
-#include "re2/prog.h"
-#include "re2jit.h"
+#include <re2/prog.h>
+#include <re2/regexp.h>
+#include <re2jit/re2jit.h>
 
 
 using namespace re2jit;

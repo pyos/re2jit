@@ -2,8 +2,7 @@
 #define RE2JIT_H
 
 #include <re2/re2.h>
-
-#include "recompiler.h"
+#include <re2jit/recompiler.h>
 
 
 class RE2jit : public RE2 {
