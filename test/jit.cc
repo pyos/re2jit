@@ -6,9 +6,7 @@ test_case("empty regexp, empty input")
         return Result::Fail("not jitted");
     }
 
-    if (s != re2jit::JITProg::MATCHED) {
-        return false;
-    }
+    return s == re2jit::JITProg::MATCHED;
 }
 
 
@@ -20,7 +18,5 @@ test_case("empty regexp, non-empty input")
         return Result::Fail("not jitted");
     }
 
-    if (s != re2jit::JITProg::MATCHED) {
-        return false;
-    }
+    return s == re2jit::JITProg::MATCHED;
 }
