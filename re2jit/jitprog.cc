@@ -9,7 +9,7 @@ using namespace re2jit;
 JITProg::JITProg(re2::Prog* prog) : jit_function(
     *(_context = new jit_context),
     signature_helper(
-        jit_type_int,
+        jit_type_int,  // const char *input, int *groups, int ngroups -> int matched
         jit_type_void_ptr, jit_type_void_ptr, jit_type_int, end_params)), _prog(prog), _ptr(NULL)
 {
     if (prog == NULL) {
@@ -31,6 +31,41 @@ JITProg::JITProg(re2::Prog* prog) : jit_function(
     ssize_t e = prog->start();
     ssize_t n = prog->size();
 
+    /* So, the idea:
+
+        1. Create a linked list of "threads", separated into two parts.
+        2. Each thread has an entry point, which is a pointer to somewhere
+           within the compiled function, as well as a copy of the `groups` array.
+        3. Initially, there is one thread in the first part of that list, pointing to
+           `prog->start()` with a zero-initialized array.
+        4. When a thread encounters a `kInstAlt` instruction, it forks off
+           a new thread with its instruction counter pointing to `out1`, appends
+           that thread to the first part of the list, then jumps to `out`.
+        5. When a thread encounters a `kInstByteRange`, it either fails to match
+           or succeeds and moves itself to the second part of the list, then resumes
+           execution at the next thread of the first list.
+        6. If the first list becomes empty, all threads from the second list
+           are moved into the first, the input string is advanced one byte,
+           and execution continues at the next thread.
+        7. If both lists are empty, the regex did not match.
+        8. Execution continues until either all threads die (=> no match),
+           or first `N - 1` threads die and the `N`th encounters a `kInstMatch`
+           (=> best match found.)
+
+        (Point 8 assumes `kInstAlt` orders alternatives in order of preference, e.g.
+        a greedy `x*x` regex compiles to something like `loop: ... kInstAlt(loop, try_x) ...`
+        while the non-greedy `x*?x` version is `loop: ... kInstAlt(try_x, loop) ...`.)
+
+        TODO:
+
+          * implement all that;
+          * figure out what the hell `kInstAltMatch` is;
+          * use `Inst`'s static methods to check whether `kInstEmptyWidth` matches;
+          * come up with some way to optimize Unicode lookups -- unwrapping `\N{whatev}`
+            into `[all characters which have class whatev]` is a bad idea if these
+            characters include every single one of Chinese hieroglyphs.
+
+    */
     for (i = 0; i < n; i++) {
         if (i == e) {
             insn_label(__entry);
