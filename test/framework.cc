@@ -65,7 +65,7 @@ int main()
         fflush(stdout);
 
         #ifdef RE2JIT_DEBUG_H
-            re2jit::DebugStream::Clear();
+            re2jit::Debug::Clear();
         #endif
 
         auto r = TESTS[i].fn();
@@ -80,7 +80,7 @@ int main()
         }
 
         #ifdef RE2JIT_DEBUG_H
-            const char *msg = re2jit::DebugStream::Iterate(NULL);
+            const char *msg = re2jit::Debug::Iterate(NULL);
 
             if (msg) {
                 fprintf(stdout, FG_HIDE "%zu." FG_SHOW FG_YELLOW " --- re2jit debug:\n" FG_RESET, i);
@@ -88,7 +88,7 @@ int main()
 
             while (msg != NULL) {
                 fprintf(stdout, FG_HIDE "%zu." FG_SHOW FG_YELLOW "     %s" FG_RESET, i, msg);
-                msg = re2jit::DebugStream::Iterate(msg);
+                msg = re2jit::Debug::Iterate(msg);
             }
         #endif
     }

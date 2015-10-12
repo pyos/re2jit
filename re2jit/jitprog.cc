@@ -12,8 +12,9 @@ JITProg::JITProg(re2::Prog* prog) : jit_function(
         jit_type_int,  // const char *input, int *groups, int ngroups -> int matched
         jit_type_void_ptr, jit_type_void_ptr, jit_type_int, end_params)), _prog(prog), _ptr(NULL)
 {
+    Debug::Write("re2::Prog * = %p\n", prog);
+
     if (prog == NULL) {
-        DEBUG("NULL prog\n");
         return;
     }
 
@@ -21,14 +22,7 @@ JITProg::JITProg(re2::Prog* prog) : jit_function(
     jit_value groups  = get_param(1);
     jit_value ngroups = get_param(2);
 
-    jit_value __true  = new_constant(1, jit_type_int);
-    jit_value __false = new_constant(0, jit_type_int);
-
-    jit_label __entry;
-    insn_branch(__entry);
-
     ssize_t i;
-    ssize_t e = prog->start();
     ssize_t n = prog->size();
 
     /* So, the idea:
@@ -67,32 +61,28 @@ JITProg::JITProg(re2::Prog* prog) : jit_function(
 
     */
     for (i = 0; i < n; i++) {
-        if (i == e) {
-            insn_label(__entry);
-        }
-
         re2::Prog::Inst *op = prog->inst(i);
         // op->[out, out1, lo, hi, cap, empty, match_id]()
 
         switch (op->opcode()) {
             case re2::kInstAlt:
                 // jump to either out_ or out1_
-                DEBUG("not jitting: kInstAlt\n");
+                Debug::Write("re2jit::JITProg | can't compile kInstAlt\n");
                 return;
 
             case re2::kInstAltMatch:
                 // ??? [out_, out1_]
-                DEBUG("not jitting: kInstAltMatch\n");
+                Debug::Write("re2jit::JITProg | can't compile kInstAltMatch\n");
                 return;
 
             case re2::kInstByteRange:
                 // char in [lo_; hi_]
-                DEBUG("not jitting: kInstByteRange\n");
+                Debug::Write("re2jit::JITProg | can't compile kInstByteRange\n");
                 return;
 
             case re2::kInstCapture:
                 // write string offset to group cap_: n-th group is [2n;2n+1)
-                DEBUG("not jitting: kInstCapture\n");
+                Debug::Write("re2jit::JITProg | can't compile kInstCapture\n");
                 return;
 
             case re2::kInstEmptyWidth:
@@ -103,22 +93,23 @@ JITProg::JITProg(re2::Prog* prog) : jit_function(
                 // kEmptyEndText
                 // kEmptyWordBoundary -> \b
                 // kEmptyNonWordBoundary -> \B
-                DEBUG("not jitting: kInstEmptyWidth\n");
+                Debug::Write("re2jit::JITProg | can't compile kInstEmptyWidth\n");
+                return;
+
+            case re2::kInstNop:
+                Debug::Write("re2jit::JITProg | can't compile kInstNop\n");
                 return;
 
             case re2::kInstMatch:
-                insn_return(__true);
-                break;
-
-            case re2::kInstNop:
-                break;
+                Debug::Write("re2jit::JITProg | can't compile kInstMatch\n");
+                return;
 
             case re2::kInstFail:
-                insn_return(__false);
-                break;
+                Debug::Write("re2jit::JITProg | can't compile kInstFail\n");
+                return;
 
             default:
-                DEBUG("unknown opcode %d\n", op->opcode());
+                Debug::Write("re2jit::JITProg | unknown opcode %d\n", op->opcode());
                 return;
         }
     }
@@ -126,7 +117,7 @@ JITProg::JITProg(re2::Prog* prog) : jit_function(
     if (compile()) {
         _ptr = (Closure *) closure();
     } else {
-        DEBUG("libjit error\n");
+        Debug::Write("libjit error\n");
     }
 }
 

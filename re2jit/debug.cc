@@ -7,14 +7,14 @@
     using namespace re2jit;
 
 
-    static thread_local DebugStream _stream;
+    static thread_local Debug _stream;
 
 
-    DebugStream::DebugStream() : head(0), tail(0), empty(1) {}
+    Debug::Debug() : head(0), tail(0), empty(1) {}
 
 
     void
-    DebugStream::Write(const char *fmt, ...)
+    Debug::Write(const char *fmt, ...)
     {
         va_list vl;
         va_start(vl, fmt);
@@ -30,7 +30,7 @@
 
 
     void
-    DebugStream::Clear()
+    Debug::Clear()
     {
         _stream.head = _stream.tail = 0;
         _stream.empty = 1;
@@ -38,7 +38,7 @@
 
 
     const char *
-    DebugStream::Iterate(const char *previous)
+    Debug::Iterate(const char *previous)
     {
         if (_stream.empty) {
             return NULL;
