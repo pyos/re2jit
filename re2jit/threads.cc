@@ -19,6 +19,7 @@ static rejit_thread_t *rejit_thread_new(rejit_threadset_t *r)
             return NULL;
         }
 
+        memset(t->groups, 0, sizeof(int) * r->ngroups);
         t->category.ref = t;
         rejit_list_init(&t->category);
     }

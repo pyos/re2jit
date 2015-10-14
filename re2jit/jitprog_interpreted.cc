@@ -13,7 +13,7 @@ JITProg::operator()(const re2::StringPiece& text, RE2::Anchor anchor,
     auto *nfa = rejit_thread_init(text.data(), text.size(), _IPTR(_prog->start()),
         anchor == RE2::ANCHOR_START  ? RE2JIT_ANCHOR_START :
         anchor == RE2::ANCHOR_BOTH   ? RE2JIT_ANCHOR_START | RE2JIT_ANCHOR_END : 0,
-        nmatch * 2);
+        nmatch * 2 + 2);
 
     auto _nfa = util::stackbound<rejit_threadset_t> { nfa, rejit_thread_free };
 
@@ -22,13 +22,11 @@ JITProg::operator()(const re2::StringPiece& text, RE2::Anchor anchor,
 
         switch (op->opcode()) {
             case re2::kInstAlt:
-                Debug::Write("rejit_thread_fork\n");
                 rejit_thread_fork(nfa, _IPTR(op->out1()));
                 nfa->running->entry = _IPTR(op->out());
                 break;
 
             case re2::kInstAltMatch:
-                Debug::Write("re2jit::JITProg | can't interpret kInstAltMatch\n");
                 return NOT_JITTED;
 
             case re2::kInstByteRange: {
@@ -39,7 +37,6 @@ JITProg::operator()(const re2::StringPiece& text, RE2::Anchor anchor,
                 }
 
                 if (c < op->lo() || c > op->hi()) {
-                    Debug::Write("rejit_thread_fail: %c not in [%d;%d]\n", c, op->lo(), op->hi());
                     rejit_thread_fail(nfa);
                 } else {
                     rejit_thread_wait(nfa, 1);
@@ -50,7 +47,7 @@ JITProg::operator()(const re2::StringPiece& text, RE2::Anchor anchor,
             }
 
             case re2::kInstCapture:
-                if (op->cap() < nmatch * 2) {
+                if (op->cap() < nmatch * 2 + 2) {
                     nfa->running->groups[op->cap()] = nfa->input - text.begin();
                 }
 
@@ -90,10 +87,8 @@ JITProg::operator()(const re2::StringPiece& text, RE2::Anchor anchor,
     int *gs, r = rejit_thread_result(nfa, &gs);
 
     for (int i = 0; i < nmatch; i++) {
-        match[i].set(text.data() + gs[2 * i], gs[2 * i + 1] - gs[2 * i]);
+        match[i].set(text.data() + gs[2 * i + 2], gs[2 * i + 3] - gs[2 * i + 2]);
     }
-
-    Debug::Write("re2jit::JITProg | interpreted with result %d\n", r);
 
     return r <  0 ? NOT_JITTED
          : r == 0 ? NOT_MATCHED
