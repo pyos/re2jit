@@ -20,3 +20,15 @@ test_case("re2jit linkage")
 {
     return RE2jit("Hello, World!").Match("Hello, World!");
 }
+
+
+test_case("re2jit regex match")
+{
+    return RE2jit("[hH]ello,? +[Ww]orld(\\?|!|\\.|)").Match("Hello, World!");
+}
+
+
+test_case("re2jit regex non-match")
+{
+    return !RE2jit("[hH]ello,? +[Ww]orld(\\?|!|\\.|)").Match("Hello, re2jit!");
+}
