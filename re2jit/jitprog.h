@@ -10,7 +10,6 @@ namespace re2jit {
 
     protected:
         re2::Prog *_prog;
-        void *_code;
 
     public:
         JITProg(re2::Prog * = NULL);

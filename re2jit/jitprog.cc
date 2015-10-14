@@ -63,7 +63,7 @@ static inline void _print_bytecode(re2::Prog *prog)
 }
 
 
-JITProg::JITProg(re2::Prog* prog) : _prog(prog), _code(NULL)
+JITProg::JITProg(re2::Prog* prog) : _prog(prog)
 {
     Debug::Write("re2::Prog * = %p\n", prog);
 
@@ -78,10 +78,6 @@ JITProg::JITProg(re2::Prog* prog) : _prog(prog), _code(NULL)
 JITProg::~JITProg()
 {
     delete _prog;
-
-    if (_code) {
-        sljit_free_code(_code);
-    }
 }
 
 
