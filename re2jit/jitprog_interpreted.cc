@@ -27,6 +27,7 @@ JITProg::operator()(const re2::StringPiece& text, RE2::Anchor anchor,
                 break;
 
             case re2::kInstAltMatch:
+                Debug::Write("re2jit::JITProg | can't interpret kInstAltMatch\n");
                 return NOT_JITTED;
 
             case re2::kInstByteRange: {
@@ -84,10 +85,13 @@ JITProg::operator()(const re2::StringPiece& text, RE2::Anchor anchor,
         }
     }
 
-    int *gs, r = rejit_thread_result(nfa, &gs);
+    int *gs = NULL, r = rejit_thread_result(nfa, &gs);
 
     for (int i = 0; i < nmatch; i++) {
-        match[i].set(text.data() + gs[2 * i + 2], gs[2 * i + 3] - gs[2 * i + 2]);
+        if (gs == NULL || gs[2 * i + 2] == -1)
+            match[i].set((const char *) NULL, 0);
+        else
+            match[i].set(text.data() + gs[2 * i + 2], gs[2 * i + 3] - gs[2 * i + 2]);
     }
 
     return r <  0 ? NOT_JITTED
