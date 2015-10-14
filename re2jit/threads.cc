@@ -99,7 +99,7 @@ int rejit_thread_dispatch(rejit_threadset_t *r, int max_steps)
 {
     size_t queue = r->active_queue;
 
-    do {
+    while (1) {
         struct st_rejit_thread_ref_t *t = r->queues[queue].first;
 
         while (t != rejit_list_end(&r->queues[queue])) {
@@ -118,16 +118,20 @@ int rejit_thread_dispatch(rejit_threadset_t *r, int max_steps)
 
         queue = (queue + 1) % (RE2JIT_THREAD_LOOKAHEAD + 1);
 
-        if (!(r->flags & RE2JIT_ANCHOR_START) && r->length) {
+        if (!r->length) {
+            return 0;
+        }
+
+        if (!(r->flags & RE2JIT_ANCHOR_START)) {
             if (rejit_thread_entry(r) == NULL) {
                 // XOO < *ac was completely screwed out of memory
                 //        and nothing can fix that!!*
             }
         }
-    } while (r->input++, r->length--);
 
-    // Doesn't matter which queue is active now...
-    return 0;
+        r->input++;
+        r->length--;
+    }
 }
 
 
