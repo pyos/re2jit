@@ -4,25 +4,25 @@
 using re2jit::debug;
 
 
-void *_compile(re2::Prog *prog)
+static inline void *_compile(re2::Prog *prog)
 {
     debug::write("re2jit::it: vm mode\n");
     return prog;
 }
 
 
-void _destroy(void *)
+static inline void _destroy(void *)
 {
 }
 
 
-void *_entry(void *prog)
+static inline void *_entry(void *prog)
 {
     return _IPTR(((re2::Prog *) prog)->start());
 }
 
 
-bool _run(void *prog, struct rejit_threadset_t *nfa, const char *input)
+static inline bool _run(void *prog, struct rejit_threadset_t *nfa, const char *input)
 {
     re2::Prog *_prog = (re2::Prog *) prog;
 

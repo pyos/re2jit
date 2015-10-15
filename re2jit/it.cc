@@ -6,10 +6,16 @@
 #include "threads.h"
 
 
-static inline void *_compile (re2::Prog *);
-static inline void  _destroy (void *);
-static inline void *_entry   (void *);
-static inline bool  _run     (void *, struct rejit_threadset_t *, const char *);
+#if RE2JIT_VM
+    #include "re2jit/it.vm.cc"
+#elif __x86_64__
+    #include "re2jit/it.x64.cc"
+#else
+    static inline void *_compile (re2::Prog *) { return NULL; }
+    static inline void  _destroy (void *) {}
+    static inline void *_entry   (void *) { return NULL; }
+    static inline bool  _run     (void *, struct rejit_threadset_t *, const char *) { return 0; }
+#endif
 
 
 namespace re2jit
@@ -69,6 +75,11 @@ namespace re2jit
             return FAILED;
         }
 
+        if (nfa.flags & RE2JIT_THREAD_FAILED) {
+            // already free'd.
+            return FAILED;
+        }
+
         int *gs = NULL, r = rejit_thread_result(&nfa, &gs);
 
         for (int i = 0; i < nmatch; i++) {
@@ -84,12 +95,3 @@ namespace re2jit
         return r ? ACCEPT : REJECT;
     }
 };
-
-
-#if RE2JIT_VM
-    #include "re2jit/it.vm.cc"
-#elif __x86_64__
-    #include "re2jit/it.x64.cc"
-#else
-    #include "re2jit/it.fallback.cc"
-#endif

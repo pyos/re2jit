@@ -21,8 +21,7 @@ _require_objects = \
 
 _require_platform_code = \
 	re2jit/it.x64.cc \
-	re2jit/it.vm.cc \
-	re2jit/it.fallback.cc
+	re2jit/it.vm.cc
 
 
 _require_library = \
