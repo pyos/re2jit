@@ -116,7 +116,7 @@ int rejit_thread_dispatch(rejit_threadset_t *r, int max_steps)
             t = r->queues[queue].first;
         }
 
-        queue = (queue + 1) % (RE2JIT_THREAD_LOOKAHEAD + 1);
+        r->active_queue = queue = (queue + 1) % (RE2JIT_THREAD_LOOKAHEAD + 1);
 
         if (!r->length) {
             return 0;
