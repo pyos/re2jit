@@ -1,54 +1,44 @@
 test_case("re2 linkage")
 {
-    RE2 regex("Hello, World!");
-
-    MEASURE(1000000, RE2::FullMatch("Hello, World!", regex));
+    _RE2(regex, "Hello, World!");
+    MEASURE(1000000, _RE2_FULL(regex, "Hello, World!"));
 }
 
 
 test_case("re2 regex match")
 {
     re2::StringPiece xs;
-    RE2 regex("[hH]ello,? +[Ww]orld(\\?|!|\\.|)");
-
-    MEASURE(1000000, RE2::FullMatch("Hello, World!", regex, &xs));
-    re2jit::Debug::Write("=> %s\n", xs.data());
+    _RE2(regex, "[hH]ello,? +[Ww]orld(\\?|!|\\.|)");
+    MEASURE(1000000, _RE2_FULL(regex, "Hello, World!", &xs));
 }
 
 
 test_case("re2 regex non-match")
 {
     re2::StringPiece xs;
-    RE2 regex("[hH]ello,? +[Ww]orld(\\?|!|\\.|)");
-
-    MEASURE(1000000, RE2::FullMatch("Hello, re2!", regex, &xs));
-    re2jit::Debug::Write("=> %s\n", xs.data());
+    _RE2(regex, "[hH]ello,? +[Ww]orld(\\?|!|\\.|)");
+    MEASURE(1000000, _RE2_FULL(regex, "Hello, re2!", &xs));
 }
 
 
 test_case("re2jit linkage")
 {
-    RE2jit regex("Hello, World!");
-
-    MEASURE(1000000, regex.Match("Hello, World!"));
+    _R2J(regex, "Hello, World!");
+    MEASURE(1000000, _R2J_FULL(regex, "Hello, World!"));
 }
 
 
 test_case("re2jit regex match")
 {
     re2::StringPiece xs;
-    RE2jit regex("[hH]ello,? +[Ww]orld(\\?|!|\\.|)");
-
-    MEASURE(1000000, regex.Match("Hello, World!", RE2::ANCHOR_START, &xs, 1));
-    re2jit::Debug::Write("=> %s\n", xs.data());
+    _R2J(regex, "[hH]ello,? +[Ww]orld(\\?|!|\\.|)");
+    MEASURE(1000000, _R2J_FULL(regex, "Hello, World!", &xs, 1));
 }
 
 
 test_case("re2jit regex non-match")
 {
     re2::StringPiece xs;
-    RE2jit regex("[hH]ello,? +[Ww]orld(\\?|!|\\.|)");
-
-    MEASURE(1000000, regex.Match("Hello, re2!", RE2::ANCHOR_BOTH, &xs, 1));
-    re2jit::Debug::Write("=> %s\n", xs.data());
+    _R2J(regex, "[hH]ello,? +[Ww]orld(\\?|!|\\.|)");
+    MEASURE(1000000, _R2J_FULL(regex, "Hello, re2!", &xs, 1));
 }

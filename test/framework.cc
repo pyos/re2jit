@@ -70,14 +70,10 @@ int main()
 
         auto r = TESTS[i].fn();
 
-        fprintf(stdout, "\r%s%zu" FG_RESET ". %s\n",
+        fprintf(stdout, "\r%s%zu" FG_RESET ". %s %s\n",
             r.state == Result::PASS ? FG_GREEN  :
             r.state == Result::FAIL ? FG_RED    :
-            r.state == Result::SKIP ? FG_YELLOW : "", i, TESTS[i].name.c_str());
-
-        if (r.info[0]) {
-            fprintf(stdout, FG_HIDE "%zu." FG_SHOW " %s\n", i, r.info);
-        }
+            r.state == Result::SKIP ? FG_YELLOW : "", i, TESTS[i].name.c_str(), r.info);
 
         #ifdef RE2JIT_DEBUG_H
             const char *msg = re2jit::Debug::Iterate(NULL);
