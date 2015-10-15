@@ -109,6 +109,7 @@ extern "C" {
     struct rejit_threadset_t
     {
         const char *input;
+        size_t offset;
         size_t length;
         /* Entry point of the initial thread. */
         rejit_entry_t entry;

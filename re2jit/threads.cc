@@ -55,6 +55,7 @@ void rejit_thread_init(struct rejit_threadset_t *r)
     }
 
     r->empty = RE2JIT_EMPTY_BEGIN_LINE | RE2JIT_EMPTY_BEGIN_TEXT;
+    r->offset = 0;
     r->active_queue = 0;
     r->free = NULL;
     r->running = NULL;
@@ -135,6 +136,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps)
             r->empty |= RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT;
         }
 
+        r->offset++;
         // Word boundaries not supported because UTF-8.
     }
 }
