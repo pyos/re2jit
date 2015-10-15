@@ -20,7 +20,9 @@ _require_objects = \
 
 
 _require_platform_code = \
-	re2jit/threads.vm.cc
+	re2jit/it.x64.cc \
+	re2jit/it.vm.cc \
+	re2jit/it.fallback.cc
 
 
 _require_library = \
@@ -69,6 +71,11 @@ obj/libre2jit.a: $(_require_objects)
 
 obj/libre2jit.so: $(_require_objects)
 	$(DYNLINK) $@ $^
+
+
+obj/it.o: re2jit/it.cc $(_require_headers) $(_require_platform_code)
+	@mkdir -p $(dir $@)
+	$(COMPILE) -c -o $@ $<
 
 
 obj/%.o: re2jit/%.cc $(_require_headers)

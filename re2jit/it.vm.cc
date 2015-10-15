@@ -6,6 +6,9 @@
 
 
 namespace re2jit {
+    void it::_compile() {}
+    void it::_destroy() {}
+
     status it::run_nfa(const re2::StringPiece& text, RE2::Anchor anchor,
                              re2::StringPiece *match, int nmatch) const
     {

@@ -13,13 +13,13 @@ namespace re2jit
         if (RE2::ok()
             && (_regex = RE2::Regexp())
             && (_prog  = _regex->CompileToProg(RE2::options().max_mem())))
-        // TODO run some kind of compilation step
-               (void) 0;
+               _compile();
     }
 
 
     it::~it()
     {
+        _destroy();
         delete _prog;
     }
 
@@ -44,13 +44,10 @@ namespace re2jit
 };
 
 
-#ifdef RE2JIT_INTERPRET
-    #include "re2jit/threads.vm.cc"
+#if RE2JIT_INTERPRET
+    #include "re2jit/it.vm.cc"
+#elif __x86_64__
+    #include "re2jit/it.x64.cc"
 #else
-    re2jit::status
-    re2jit::it::run_nfa(const re2::StringPiece&, RE2::Anchor,
-                              re2::StringPiece*, int) const
-    {
-        return FAILED;
-    }
+    #include "re2jit/it.fallback.cc"
 #endif
