@@ -93,6 +93,8 @@ extern "C" {
         // Entry point of the initial thread -- the one which is spawned
         // at the beginning of the input.
         void *entry;
+        // Jump back to this point to return to `thread_dispatch`.
+        void *return_;
         // Length of `groups` in each thread. NOT the number of groups in the regex.
         // More like double that. That is, +1 for each open and closing parenthesis.
         int ngroups;

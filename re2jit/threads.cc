@@ -103,6 +103,7 @@ void rejit_thread_free(rejit_threadset_t *r)
 int rejit_thread_dispatch(rejit_threadset_t *r, int max_steps)
 {
     size_t queue = r->active_queue;
+    r->return_ = &&dispatch_return;
 
     while (1) {
         struct st_rejit_thread_ref_t *t = r->queues[queue].first;
@@ -112,6 +113,7 @@ int rejit_thread_dispatch(rejit_threadset_t *r, int max_steps)
 
             // TODO something with `t->ref->entry`.
             // NOTE thread should never run `dispatch`! It should return here.
+            dispatch_return:
 
             if (!--max_steps) {
                 r->active_queue = queue;
