@@ -94,6 +94,8 @@ JITProg::operator()(const re2::StringPiece& text, RE2::Anchor anchor,
             match[i].set(text.data() + gs[2 * i + 2], gs[2 * i + 3] - gs[2 * i + 2]);
     }
 
+    Debug::Write("re2jit::JITProg interpreted with result %d\n", r);
+
     return r <  0 ? NOT_JITTED
          : r == 0 ? NOT_MATCHED
          : MATCHED;
