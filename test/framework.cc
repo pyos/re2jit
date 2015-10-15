@@ -35,6 +35,20 @@ struct TestCase {
 
 // TEST = test definition file, TESTH = accompanying header file.
 #include escape_macro(TESTH)
+#include <stdio.h>
+
+#define FG_HIDE "\033[8m"
+#define FG_SHOW "\033[28m"
+#define FG      "\033[3"
+#define BG      "\033[4"
+#define RED     "1m"
+#define GREEN   "2m"
+#define YELLOW  "3m"
+#define BLUE    "4m"
+#define PURPLE  "5m"
+#define CYAN    "6m"
+#define GRAY    "7m"
+#define RESET   "9m"
 
 
 TestCase TESTS[] = {
@@ -48,20 +62,10 @@ TestCase TESTS[] = {
 };
 
 
-
-#include <stdio.h>
-#define FG_RED    "\033[31m"
-#define FG_GREEN  "\033[32m"
-#define FG_YELLOW "\033[33m"
-#define FG_HIDE   "\033[8m"
-#define FG_SHOW   "\033[28m"
-#define FG_RESET  "\033[39m"
-
-
 int main()
 {
     for (size_t i = 1; i < sizeof(TESTS) / sizeof(*TESTS); i++) {
-        fprintf(stdout, FG_YELLOW "%zu" FG_RESET ". %s ", i, TESTS[i].name.c_str());
+        fprintf(stdout, FG YELLOW "%zu" FG RESET ". %s ", i, TESTS[i].name.c_str());
         fflush(stdout);
 
         #ifdef RE2JIT_DEBUG_H
@@ -70,20 +74,20 @@ int main()
 
         auto r = TESTS[i].fn();
 
-        fprintf(stdout, "\r%s%zu" FG_RESET ". %s %s\n",
-            r.state == Result::PASS ? FG_GREEN  :
-            r.state == Result::FAIL ? FG_RED    :
-            r.state == Result::SKIP ? FG_YELLOW : "", i, TESTS[i].name.c_str(), r.info);
+        fprintf(stdout, "\r%s%zu" FG RESET ". %s %s\n",
+            r.state == Result::PASS ? FG GREEN  :
+            r.state == Result::FAIL ? FG RED    :
+            r.state == Result::SKIP ? FG YELLOW : "", i, TESTS[i].name.c_str(), r.info);
 
         #ifdef RE2JIT_DEBUG_H
             const char *msg = re2jit::debug::iterate(NULL);
 
             if (msg) {
-                fprintf(stdout, FG_HIDE "%zu." FG_SHOW FG_YELLOW " --- re2jit debug:\n" FG_RESET, i);
+                fprintf(stdout, FG_HIDE "%zu." FG_SHOW FG YELLOW " --- re2jit debug:\n" FG RESET, i);
             }
 
             while (msg != NULL) {
-                fprintf(stdout, FG_HIDE "%zu." FG_SHOW FG_YELLOW "     %s" FG_RESET, i, msg);
+                fprintf(stdout, FG_HIDE "%zu." FG_SHOW FG YELLOW "     %s" FG RESET, i, msg);
                 msg = re2jit::debug::iterate(msg);
             }
         #endif
