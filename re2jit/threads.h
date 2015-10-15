@@ -42,6 +42,17 @@ extern "C" {
     };
 
 
+    enum RE2JIT_EMPTY_FLAGS {
+        // Copied from re2.
+        RE2JIT_EMPTY_BEGIN_LINE        = 0x01,  // ^ - beginning of line
+        RE2JIT_EMPTY_END_LINE          = 0x02,  // $ - end of line
+        RE2JIT_EMPTY_BEGIN_TEXT        = 0x04,  // \A - beginning of text
+        RE2JIT_EMPTY_END_TEXT          = 0x08,  // \z - end of text
+        RE2JIT_EMPTY_WORD_BOUNDARY     = 0x10,  // \b - word boundary
+        RE2JIT_EMPTY_NON_WORD_BOUNDARY = 0x20,  // \B - not \b
+    };
+
+
     struct st_rejit_thread_t;
     struct st_rejit_thread_ref_t
     {
@@ -87,6 +98,8 @@ extern "C" {
         int ngroups;
         // Options such as anchoring of the regex.
         int flags;
+        // Empty-length flags at the current input position.
+        int empty;
         // Ring buffer of thread queues. The threads in the active queue are run,
         // in order, until all of them match, fail, or move to one of the inactive
         // queues. Then the input is advanced by a single byte, and the buffer

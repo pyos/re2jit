@@ -60,11 +60,16 @@ rejit_threadset_t *rejit_thread_init(const char *input, size_t length, void *ent
         rejit_list_init(&r->queues[i]);
     }
 
+    r->empty = RE2JIT_EMPTY_BEGIN_LINE | RE2JIT_EMPTY_BEGIN_TEXT;
     r->entry = entry;
     r->flags = flags;
     r->input = input;
     r->length = length;
     r->ngroups = ngroups;
+
+    if (!length) {
+        r->empty |= RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT;
+    }
 
     if (rejit_thread_entry(r) == NULL) {
         free(r);
@@ -129,8 +134,17 @@ int rejit_thread_dispatch(rejit_threadset_t *r, int max_steps)
             }
         }
 
-        r->input++;
-        r->length--;
+        r->empty &= ~(RE2JIT_EMPTY_BEGIN_LINE | RE2JIT_EMPTY_BEGIN_TEXT);
+
+        if (*r->input++ == '\n') {
+            r->empty |= RE2JIT_EMPTY_BEGIN_LINE;
+        }
+
+        if (! --(r->length)) {
+            r->empty |= RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT;
+        }
+
+        // Word boundaries not supported because UTF-8.
     }
 }
 

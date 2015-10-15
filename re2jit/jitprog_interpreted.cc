@@ -56,16 +56,11 @@ JITProg::operator()(const re2::StringPiece& text, RE2::Anchor anchor,
                 break;
 
             case re2::kInstEmptyWidth:
-                // empty-width state check in empty_
-                // kEmptyBeginLine -> check for beginning of line
-                // kEmptyEndLine
-                // kEmptyBeginText
-                // kEmptyEndText
-                // kEmptyWordBoundary -> \b
-                // kEmptyNonWordBoundary -> \B
-                // if (op->empty() & ~flag) fail;
-                Debug::Write("re2jit::JITProg | can't interpret kInstEmptyWidth\n");
-                return NOT_JITTED;
+                if (op->empty() & ~(nfa->empty)) {
+                    rejit_thread_fail(nfa);
+                }
+                nfa->running->entry = _IPTR(op->out());
+                break;
 
             case re2::kInstNop:
                 nfa->running->entry = _IPTR(op->out());
