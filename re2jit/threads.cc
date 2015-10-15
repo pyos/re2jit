@@ -4,54 +4,48 @@
 #include "threads.h"
 
 
-static rejit_thread_t *rejit_thread_new(rejit_threadset_t *r)
+static struct rejit_thread_t *rejit_thread_new(struct rejit_threadset_t *r)
 {
-    rejit_thread_t *t;
+    struct rejit_thread_t *t;
 
     if (r->free) {
-        // Reuse dead threads to cut on malloc-related costs.
         t = r->free;
         r->free = t->next;
-    } else {
-        t = (rejit_thread_t *) malloc(sizeof(rejit_thread_t) + sizeof(int) * r->ngroups);
-
-        if (t == NULL) {
-            return NULL;
-        }
-
-        memset(t->groups, 255, sizeof(int) * r->ngroups);
-        t->category.ref = t;
-        rejit_list_init(&t->category);
+        return t;
     }
 
+    t = (struct rejit_thread_t *) malloc(sizeof(struct rejit_thread_t)
+                                       + sizeof(int) * r->groups);
+
+    if (t == NULL) {
+        return NULL;
+    }
+
+    t->category.ref = t;
+    rejit_list_init(&t->category);
     rejit_list_init(t);
     return t;
 }
 
 
-static rejit_thread_t *rejit_thread_entry(rejit_threadset_t *r)
+static struct rejit_thread_t *rejit_thread_entry(struct rejit_threadset_t *r)
 {
-    rejit_thread_t *t = rejit_thread_new(r);
+    struct rejit_thread_t *t = rejit_thread_new(r);
 
     if (t == NULL) {
         return NULL;
     }
 
     t->entry = r->entry;
+    memset(t->groups, 255, sizeof(int) * r->groups);
     rejit_list_append(r->all_threads.last, t);
     rejit_list_append(r->queues[r->active_queue].last, &t->category);
     return t;
 }
 
 
-rejit_threadset_t *rejit_thread_init(const char *input, size_t length, void *entry, int flags, int ngroups)
+void rejit_thread_init(struct rejit_threadset_t *r)
 {
-    rejit_threadset_t *r = (rejit_threadset_t *) calloc(sizeof(rejit_threadset_t), 1);
-
-    if (r == NULL) {
-        return NULL;
-    }
-
     rejit_list_init(&r->all_threads);
 
     size_t i;
@@ -61,28 +55,23 @@ rejit_threadset_t *rejit_thread_init(const char *input, size_t length, void *ent
     }
 
     r->empty = RE2JIT_EMPTY_BEGIN_LINE | RE2JIT_EMPTY_BEGIN_TEXT;
-    r->entry = entry;
-    r->flags = flags;
-    r->input = input;
-    r->length = length;
-    r->ngroups = ngroups;
+    r->active_queue = 0;
+    r->free = NULL;
+    r->running = NULL;
 
-    if (!length) {
+    if (!r->length) {
         r->empty |= RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT;
     }
 
     if (rejit_thread_entry(r) == NULL) {
-        free(r);
-        return NULL;
+        // Dammit.
     }
-
-    return r;
 }
 
 
-void rejit_thread_free(rejit_threadset_t *r)
+void rejit_thread_free(struct rejit_threadset_t *r)
 {
-    rejit_thread_t *a, *b;
+    struct rejit_thread_t *a, *b;
 
     #define FREE_LIST(init, end) do { \
         for (a = init; a != end; ) {  \
@@ -94,19 +83,17 @@ void rejit_thread_free(rejit_threadset_t *r)
 
     FREE_LIST(r->free, NULL);
     FREE_LIST(r->all_threads.first, rejit_list_end(&r->all_threads));
-    free(r);
-
     #undef FREE_LIST
 }
 
 
-int rejit_thread_dispatch(rejit_threadset_t *r, int max_steps)
+int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps)
 {
     size_t queue = r->active_queue;
     r->return_ = &&dispatch_return;
 
     while (1) {
-        struct st_rejit_thread_ref_t *t = r->queues[queue].first;
+        struct rejit_thread_ref_t *t = r->queues[queue].first;
 
         while (t != rejit_list_end(&r->queues[queue])) {
             r->running = t->ref;
@@ -151,17 +138,17 @@ int rejit_thread_dispatch(rejit_threadset_t *r, int max_steps)
 }
 
 
-void rejit_thread_fork(rejit_threadset_t *r, void *entry)
+void rejit_thread_fork(struct rejit_threadset_t *r, void *entry)
 {
-    rejit_thread_t *t = rejit_thread_new(r);
-    rejit_thread_t *p = r->running;
+    struct rejit_thread_t *t = rejit_thread_new(r);
+    struct rejit_thread_t *p = r->running;
 
     if (t == NULL) {
         // :33 < oh shit
         return;
     }
 
-    memcpy(t->groups, p->groups, sizeof(int) * r->ngroups);
+    memcpy(t->groups, p->groups, sizeof(int) * r->groups);
     t->entry = entry;
 
     rejit_list_append(p, t);
@@ -169,9 +156,9 @@ void rejit_thread_fork(rejit_threadset_t *r, void *entry)
 }
 
 
-void rejit_thread_match(rejit_threadset_t *r)
+void rejit_thread_match(struct rejit_threadset_t *r)
 {
-    rejit_thread_t *p = r->running;
+    struct rejit_thread_t *p = r->running;
 
     if ((r->flags & RE2JIT_ANCHOR_END) && r->length) {
         // No, it did not. Not EOF yet.
@@ -190,9 +177,9 @@ void rejit_thread_match(rejit_threadset_t *r)
 }
 
 
-void rejit_thread_fail(rejit_threadset_t *r)
+void rejit_thread_fail(struct rejit_threadset_t *r)
 {
-    rejit_thread_t *p = r->running;
+    struct rejit_thread_t *p = r->running;
     rejit_list_remove(p);
     rejit_list_remove(&p->category);
     p->next = r->free;
@@ -200,16 +187,16 @@ void rejit_thread_fail(rejit_threadset_t *r)
 }
 
 
-void rejit_thread_wait(rejit_threadset_t *r, size_t shift)
+void rejit_thread_wait(struct rejit_threadset_t *r, size_t shift)
 {
     size_t queue = (r->active_queue + shift) % (RE2JIT_THREAD_LOOKAHEAD + 1);
-    rejit_thread_t *p = r->running;
+    struct rejit_thread_t *p = r->running;
     rejit_list_remove(&p->category);
     rejit_list_append(r->queues[queue].last, &p->category);
 }
 
 
-int rejit_thread_result(rejit_threadset_t *r, int **groups)
+int rejit_thread_result(struct rejit_threadset_t *r, int **groups)
 {
     if (r->all_threads.first == rejit_list_end(&r->all_threads)) {
         return 0;
