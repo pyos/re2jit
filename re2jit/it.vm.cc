@@ -1,6 +1,3 @@
-#define _IPTR(x) ((void *) (size_t) (x))
-
-
 using re2jit::debug;
 
 
@@ -16,9 +13,10 @@ static inline void _destroy(void *)
 }
 
 
-static inline void *_entry(void *prog)
+static inline rejit_entry_t _entry(void *prog)
 {
-    return _IPTR(((re2::Prog *) prog)->start());
+    // When in VM mode, entry points are
+    return (rejit_entry_t) ((re2::Prog *) prog)->start();
 }
 
 
@@ -26,7 +24,7 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa, const char *i
 {
     re2::Prog *_prog = (re2::Prog *) prog;
 
-    while (rejit_thread_dispatch(nfa, 1, 0)) {
+    while (rejit_thread_dispatch(nfa, 1)) {
         re2::Prog::Inst *op = _prog->inst((ssize_t) nfa->running->entry);
 
         if ((ssize_t) nfa->running->entry == _prog->start()) {
@@ -35,8 +33,8 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa, const char *i
 
         switch (op->opcode()) {
             case re2::kInstAlt:
-                rejit_thread_fork(nfa, _IPTR(op->out1()));
-                nfa->running->entry = _IPTR(op->out());
+                rejit_thread_fork(nfa, op->out1());
+                nfa->running->entry = op->out();
                 break;
 
             case re2::kInstAltMatch:
@@ -56,7 +54,7 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa, const char *i
                     rejit_thread_wait(nfa, 1);
                 }
 
-                nfa->running->entry = _IPTR(op->out());
+                nfa->running->entry = op->out();
                 break;
             }
 
@@ -65,18 +63,18 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa, const char *i
                     nfa->running->groups[op->cap()] = nfa->input - input;
                 }
 
-                nfa->running->entry = _IPTR(op->out());
+                nfa->running->entry = op->out();
                 break;
 
             case re2::kInstEmptyWidth:
                 if (op->empty() & ~(nfa->empty)) {
                     rejit_thread_fail(nfa);
                 }
-                nfa->running->entry = _IPTR(op->out());
+                nfa->running->entry = op->out();
                 break;
 
             case re2::kInstNop:
-                nfa->running->entry = _IPTR(op->out());
+                nfa->running->entry = op->out();
                 break;
 
             case re2::kInstMatch:
@@ -96,5 +94,3 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa, const char *i
 
     return 1;
 }
-
-#undef _IPTR

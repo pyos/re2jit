@@ -90,10 +90,9 @@ void rejit_thread_free(struct rejit_threadset_t *r)
 }
 
 
-int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps, int jump)
+int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps)
 {
     size_t queue = r->active_queue;
-    r->return_ = &&dispatch_return;
 
     while (1) {
         struct rejit_thread_ref_t *t = r->queues[queue].first;
@@ -101,12 +100,9 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps, int jump)
         while (t != rejit_list_end(&r->queues[queue])) {
             r->running = t->ref;
 
-            if (jump) {
-                // TODO something with `t->ref->entry`.
-                // NOTE thread should never run `dispatch`! It should return here.
-            }
-
-            dispatch_return:
+            #if !RE2JIT_VM
+                t->ref->entry(r);
+            #endif
 
             if (!--max_steps) {
                 r->active_queue = queue;
@@ -144,7 +140,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps, int jump)
 }
 
 
-void rejit_thread_fork(struct rejit_threadset_t *r, void *entry)
+void rejit_thread_fork(struct rejit_threadset_t *r, rejit_entry_t entry)
 {
     struct rejit_thread_t *t = rejit_thread_new(r);
     struct rejit_thread_t *p = r->running;

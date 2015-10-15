@@ -60,6 +60,21 @@ extern "C" {
 
 
     struct rejit_thread_t;
+    struct rejit_threadset_t;
+
+
+    #if RE2JIT_VM
+        // In VM mode, "entry points" are indices into the opcode array.
+        typedef size_t rejit_entry_t;
+    #else
+        /* While the JIT-compiled code is not expected to be a function,
+         * it should at least behave like one. A thread's entry point should expect
+         * to receive a pointer to the NFA where the first argument should be,
+         * and use the standard return mechanisms to get back to `thread_dispatch`. */
+        typedef void (*rejit_entry_t)(struct rejit_threadset_t *);
+    #endif
+
+
     struct rejit_thread_ref_t
     {
         RE2JIT_LIST_LINK(struct rejit_thread_t);
@@ -82,11 +97,8 @@ extern "C" {
          * Queues are rotated in and out as the input string pointer advances;
          * see `thread_dispatch`. */
         struct rejit_thread_ref_t category;
-        /* Pointer to the beginning of the thread's code.
-         * NOT A FUNCTION! NFA must be able to jump there directly, using a `goto`.
-         * When the thread has done what it could, it should jump back
-         * to `threadset_t.return_`. */
-        void *entry;
+        /* Pointer to the beginning of the thread's code. */
+        rejit_entry_t entry;
         /* VLA mapping of group indices to indices into the input string.
          * Subgroup N matched the substring indexed by [groups[2N]:groups[2N+1]).
          * Subgroup 0 is special -- it is the whole match. */
@@ -99,9 +111,7 @@ extern "C" {
         const char *input;
         size_t length;
         /* Entry point of the initial thread. */
-        void *entry;
-        /* Return address to `thread_dispatch`. Threads should jump back there. */
-        void *return_;
+        rejit_entry_t entry;
         /* Actual length of `thread_t.groups`. Must be at least 2. */
         size_t groups;
         /* Ring buffer of thread queues. The threads in the active queue are ready to
@@ -138,10 +148,10 @@ extern "C" {
      * byte forward and rotate the queue ring. If no thread becomes active until the end
      * of the input, return 0; `thread_result` can then be used to determine whether
      * the regex matched. Otherwise, return 1. */
-    int rejit_thread_dispatch(struct rejit_threadset_t *, int max_steps, int jump);
+    int rejit_thread_dispatch(struct rejit_threadset_t *, int max_steps);
 
     /* Fork a new thread off the currently running one. */
-    void rejit_thread_fork(struct rejit_threadset_t *, void *);
+    void rejit_thread_fork(struct rejit_threadset_t *, rejit_entry_t);
 
     /* Claim that the currently running thread has matched the input string. */
     void rejit_thread_match(struct rejit_threadset_t *);
