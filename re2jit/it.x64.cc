@@ -146,7 +146,7 @@ static inline rejit_entry_t _entry(void *st)
 }
 
 
-static inline bool _run(void *st, struct rejit_threadset_t *nfa, const char *)
+static inline bool _run(void *st, struct rejit_threadset_t *nfa)
 {
     struct _x64_native *storage = (struct _x64_native *) st;
 

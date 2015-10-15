@@ -14,7 +14,7 @@
     static inline void *        _compile (re2::Prog *) { return NULL; }
     static inline void          _destroy (void *) {}
     static inline rejit_entry_t _entry   (void *) { return NULL; }
-    static inline bool          _run     (void *, struct rejit_threadset_t *, const char *) { return 0; }
+    static inline bool          _run     (void *, struct rejit_threadset_t *) { return 0; }
 #endif
 
 
@@ -70,7 +70,7 @@ namespace re2jit
 
         rejit_thread_init(&nfa);
 
-        if (!_run(_platform, &nfa, text.data())) {
+        if (!_run(_platform, &nfa)) {
             rejit_thread_free(&nfa);
             return FAILED;
         }

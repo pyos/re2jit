@@ -20,7 +20,7 @@ static inline rejit_entry_t _entry(void *prog)
 }
 
 
-static inline bool _run(void *prog, struct rejit_threadset_t *nfa, const char *input)
+static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
 {
     re2::Prog *_prog = (re2::Prog *) prog;
 
@@ -28,7 +28,7 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa, const char *i
         re2::Prog::Inst *op = _prog->inst((ssize_t) nfa->running->entry);
 
         if ((ssize_t) nfa->running->entry == _prog->start()) {
-            nfa->running->groups[0] = nfa->input - input;
+            nfa->running->groups[0] = nfa->offset;
         }
 
         switch (op->opcode()) {
@@ -60,7 +60,7 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa, const char *i
 
             case re2::kInstCapture:
                 if ((size_t) op->cap() < nfa->groups) {
-                    nfa->running->groups[op->cap()] = nfa->input - input;
+                    nfa->running->groups[op->cap()] = nfa->offset;
                 }
 
                 nfa->running->entry = op->out();
@@ -78,7 +78,7 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa, const char *i
                 break;
 
             case re2::kInstMatch:
-                nfa->running->groups[1] = nfa->input - input;
+                nfa->running->groups[1] = nfa->offset;
                 rejit_thread_match(nfa);
                 break;
 
