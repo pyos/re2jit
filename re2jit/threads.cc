@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <re2jit/threads.h>
+#include "threads.h"
 
 
 static rejit_thread_t *rejit_thread_new(rejit_threadset_t *r)

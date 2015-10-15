@@ -1,5 +1,5 @@
 CXX      ?= g++
-CXXFLAGS ?= -O3
+CXXFLAGS ?= -O3 -Wall -Wextra -Werror
 
 
 _require_vendor = \
@@ -7,19 +7,20 @@ _require_vendor = \
 
 
 _require_headers = \
-	re2jit/re2jit.h \
-	re2jit/jitprog.h \
+	re2jit/it.h \
+	re2jit/list.h \
 	re2jit/debug.h \
-	re2jit/threads.h \
-	re2jit/util/list.h \
-	re2jit/util/stackbound.h
+	re2jit/threads.h
 
 
 _require_objects = \
-	obj/re2jit.o \
-	obj/jitprog.o \
+	obj/it.o \
 	obj/debug.o \
 	obj/threads.o
+
+
+_require_platform_code = \
+	re2jit/threads.vm.cc
 
 
 _require_library = \
@@ -34,9 +35,8 @@ _require_test_run = \
 ARCHIVE = ar rcs
 INSTALL = install -D
 CCFLAGS = ./ccflags
-DYNLINK = $(CXX) -shared -o
-COMPILE = $(CXX) $(CXXFLAGS) -Wall -Wextra -Werror -Wno-psabi -Wno-unused-parameter -std=c++11 -fPIC \
-          -I. -I./re2 -L./obj -L./re2/obj
+DYNLINK = $(CC) -shared -o
+COMPILE = $(CXX) $(CXXFLAGS) -std=c++11 -fPIC -I. -I./re2 -L./obj -L./re2/obj
 
 
 .PHONY: all clean test test/%
@@ -72,10 +72,10 @@ obj/libre2jit.so: $(_require_objects)
 
 
 obj/%.o: re2jit/%.cc $(_require_headers)
-	@mkdir -p obj
+	@mkdir -p $(dir $@)
 	$(COMPILE) -c -o $@ $<
 
 
 obj/test/%: test/%.cc test/%.h test/framework.cc $(_require_library) $(_require_vendor)
-	@mkdir -p obj/test
+	@mkdir -p $(dir $@)
 	$(COMPILE) -DTEST=$< -DTESTH=$(basename $<).h -pthread -o $@ test/framework.cc `$(CCFLAGS) $(basename $<).h`

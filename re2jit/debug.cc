@@ -1,20 +1,28 @@
-#if RE2JIT_DEBUG
-    #include <re2jit/debug.h>
+#include <stdio.h>
+#include <stdarg.h>
 
-    #include <stdio.h>
-    #include <stdarg.h>
+#ifndef RE2JIT_DEBUG
+/* Force the header file to use extern definitions.
+   Not defining this in another compilation unit will make it use empty
+   inline definitions instead of the ones in this file, effectively turning off
+   debugging for that unit. */
+#define RE2JIT_DEBUG
+#endif
 
-    using namespace re2jit;
+#include "debug.h"
 
 
-    static thread_local Debug _stream;
+static thread_local re2jit::debug _stream;
 
 
-    Debug::Debug() : head(0), tail(0), empty(1) {}
+namespace re2jit
+{
+    debug::debug(void) : head(0), tail(0), empty(1)
+    {
+    }
 
 
-    void
-    Debug::Write(const char *fmt, ...)
+    void debug::write(const char *fmt, ...)
     {
         va_list vl;
         va_start(vl, fmt);
@@ -29,16 +37,14 @@
     }
 
 
-    void
-    Debug::Clear()
+    void debug::clear(void)
     {
         _stream.head = _stream.tail = 0;
         _stream.empty = 1;
     }
 
 
-    const char *
-    Debug::Iterate(const char *previous)
+    const char *debug::iterate(const char *previous)
     {
         if (_stream.empty) {
             return NULL;
@@ -48,10 +54,9 @@
             return &_stream.buffer[_stream.head][0];
         }
 
-        struct { unsigned int i : RE2JIT_DEBUG_BITS; } b;
-        b.i = (previous - &_stream.buffer[0][0]) / sizeof(*buffer);
-        b.i++;
+        unsigned i = (previous - &_stream.buffer[0][0]) / sizeof(*buffer);
+        i = (i + 1) & ((1 << RE2JIT_DEBUG_BITS) - 1);
 
-        return b.i == _stream.tail ? NULL : &_stream.buffer[b.i][0];
+        return i == _stream.tail ? NULL : &_stream.buffer[i][0];
     }
-#endif
+};

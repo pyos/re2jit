@@ -18,9 +18,11 @@
 #include <stdlib.h>
 
 
+#ifdef __cplusplus
 extern "C" {
+#endif
     // Must be callable by jitted functions, so no name mangling and other stuff.
-    #include <re2jit/util/list.h>
+    #include "list.h"
 
 
     // Maximum number of bytes a thread can consume per one opcode.
@@ -126,8 +128,7 @@ extern "C" {
     // Initially, a single thread is active, pointing at some entry point.
     rejit_threadset_t *rejit_thread_init(const char *, size_t, void *entry, int flags, int ngroups);
 
-    // Deallocate the NFA. Use with util::stackbound in C++ code for automatic
-    // memory management.
+    // Deallocate the NFA, including all the dead threads.
     void rejit_thread_free(rejit_threadset_t *);
 
     // Pop a thread off the active queue and jump to its entry point, repeat at most
@@ -154,7 +155,10 @@ extern "C" {
     // is returned as an out-parameter. If the NFA has not finished yet (i.e.
     // `rejit_thread_dispatch` did not return 0), behavior is undefined.
     int rejit_thread_result(rejit_threadset_t *, int **);
+
+#ifdef __cplusplus
 };
+#endif
 
 
 #endif
