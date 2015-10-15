@@ -3,6 +3,13 @@
 
 #include "it.h"
 #include "debug.h"
+#include "threads.h"
+
+
+static inline void *_compile (re2::Prog *);
+static inline void  _destroy (void *);
+static inline void *_entry   (void *);
+static inline bool  _run     (void *, struct rejit_threadset_t *, const char *);
 
 
 namespace re2jit
@@ -13,19 +20,19 @@ namespace re2jit
         if (RE2::ok()
             && (_regex = RE2::Regexp())
             && (_prog  = _regex->CompileToProg(RE2::options().max_mem())))
-               _compile();
+               _platform = _compile(_prog);
     }
 
 
     it::~it()
     {
-        _destroy();
+        _destroy(_platform);
         delete _prog;
     }
 
 
     status it::match(const re2::StringPiece& text, RE2::Anchor anchor,
-                           re2::StringPiece *match, int nmatch) const
+                           re2::StringPiece* match, int nmatch) const
     {
         status r = run_nfa(text, anchor, match, nmatch);
 
@@ -41,10 +48,45 @@ namespace re2jit
 
         return r;
     }
+
+    status it::run_nfa(const re2::StringPiece& text, RE2::Anchor anchor,
+                             re2::StringPiece* match, int nmatch) const
+    {
+        struct rejit_threadset_t nfa;
+        // A-a-a-and C++ is worse than C99.
+        nfa.input  = text.data();
+        nfa.length = (size_t) text.size();
+        nfa.groups = (size_t) (nmatch * 2 + 2);
+        nfa.entry  = _entry(_platform);
+        nfa.flags  = anchor == RE2::ANCHOR_START  ? RE2JIT_ANCHOR_START :
+                     anchor == RE2::ANCHOR_BOTH   ? RE2JIT_ANCHOR_START | RE2JIT_ANCHOR_END :
+                     0;
+
+        rejit_thread_init(&nfa);
+
+        if (!_run(_platform, &nfa, text.data())) {
+            rejit_thread_free(&nfa);
+            return FAILED;
+        }
+
+        int *gs = NULL, r = rejit_thread_result(&nfa, &gs);
+
+        for (int i = 0; i < nmatch; i++) {
+            if (gs == NULL || gs[2 * i + 2] == -1)
+                match[i].set((const char *) NULL, 0);
+            else
+                match[i].set(text.data() + gs[2 * i + 2], gs[2 * i + 3] - gs[2 * i + 2]);
+        }
+
+        rejit_thread_free(&nfa);
+
+        debug::write("re2jit::it: finished with result %d\n", r);
+        return r ? ACCEPT : REJECT;
+    }
 };
 
 
-#if RE2JIT_INTERPRET
+#if RE2JIT_VM
     #include "re2jit/it.vm.cc"
 #elif __x86_64__
     #include "re2jit/it.x64.cc"

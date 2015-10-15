@@ -31,8 +31,6 @@ namespace re2jit
             re2::Regexp *_regex;
             re2::Prog   *_prog;
             void *_platform;
-            void _compile();
-            void _destroy();
     };
 };
 

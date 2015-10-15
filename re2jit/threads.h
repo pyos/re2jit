@@ -131,7 +131,7 @@ extern "C" {
      * byte forward and rotate the queue ring. If no thread becomes active until the end
      * of the input, return 0; `thread_result` can then be used to determine whether
      * the regex matched. Otherwise, return 1. */
-    int rejit_thread_dispatch(struct rejit_threadset_t *, int max_steps);
+    int rejit_thread_dispatch(struct rejit_threadset_t *, int max_steps, int jump);
 
     /* Fork a new thread off the currently running one. */
     void rejit_thread_fork(struct rejit_threadset_t *, void *);
