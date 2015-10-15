@@ -81,6 +81,9 @@ void rejit_thread_free(struct rejit_threadset_t *r)
         }                             \
     } while (0)
 
+    r->flags |= RE2JIT_THREAD_FAILED;
+    r->input = NULL;
+    r->length = 0;  // force `thread_dispatch` to stop
     FREE_LIST(r->free, NULL);
     FREE_LIST(r->all_threads.first, rejit_list_end(&r->all_threads));
     #undef FREE_LIST
