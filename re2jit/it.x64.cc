@@ -44,8 +44,8 @@ static inline void *_compile(re2::Prog *prog)
         switch (op->opcode()) {
             case re2::kInstAlt:
                 //    mov  code+vtable[out1], %rsi
-                //    push code+vtable[out]
-                //    jmp  rejit_thread_fork
+                //    call rejit_thread_fork
+                //    jmp  code+vtable[out]
                 return storage;
 
             case re2::kInstAltMatch:
