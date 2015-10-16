@@ -80,6 +80,9 @@ void rejit_thread_init(struct rejit_threadset_t *r)
 {
     rejit_list_init(&r->all_threads);
 
+    r->states = BIT_INDEX(r->states_visited, r->states - 1) + 1;
+    r->states_visited = (size_t *) calloc(sizeof(size_t), r->states);
+
     size_t i;
 
     for (i = 0; i <= RE2JIT_THREAD_LOOKAHEAD; i++) {
@@ -96,9 +99,7 @@ void rejit_thread_init(struct rejit_threadset_t *r)
         r->empty |= RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT;
     }
 
-    if (rejit_thread_entry(r) == NULL) {
-        // Dammit.
-    }
+    rejit_thread_entry(r);
 }
 
 
@@ -119,6 +120,7 @@ void rejit_thread_free(struct rejit_threadset_t *r)
     r->length = 0;  // force `thread_dispatch` to stop
     FREE_LIST(r->free, NULL);
     FREE_LIST(r->all_threads.first, rejit_list_end(&r->all_threads));
+    free(r->states_visited);
     #undef FREE_LIST
 }
 
@@ -136,7 +138,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps)
             rejit_thread_release(r, r->running);
 
             #if !RE2JIT_VM
-                r->running->entry(r);
+                r->running->entry(r, r->states_visited);
             #endif
 
             if (!--max_steps) {
@@ -145,6 +147,10 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps)
 
             t = r->queues[queue].first;
         }
+
+        // this bit vector is shared across all threads on a single queue.
+        // whichever thread first enters a state gets to own that state.
+        memset(r->states_visited, 0, sizeof(size_t) * r->states);
 
         r->active_queue = queue = (queue + 1) % (RE2JIT_THREAD_LOOKAHEAD + 1);
 

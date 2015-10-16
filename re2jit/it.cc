@@ -62,6 +62,7 @@ namespace re2jit
         // A-a-a-and C++ is worse than C99.
         nfa.input  = text.data();
         nfa.length = (size_t) text.size();
+        nfa.states = (size_t) _prog->size();
         nfa.groups = nmatch ? (size_t) nmatch * 2 : 2;
         nfa.entry  = _entry(_platform);
         nfa.flags  = anchor == RE2::ANCHOR_START  ? RE2JIT_ANCHOR_START :

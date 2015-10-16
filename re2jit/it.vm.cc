@@ -21,11 +21,6 @@ static inline rejit_entry_t _entry(void *prog)
     return (rejit_entry_t) ((re2::Prog *) prog)->start();
 }
 
-#define BIT_INDEX(x, i) (i / (sizeof((x)[0]) * 8))
-#define BIT_SHIFT(x, i) (i % (sizeof((x)[0]) * 8))
-#define BIT_GET(x, i) ((x)[BIT_INDEX(x, i)] & (1LL << BIT_SHIFT(x, i)))
-#define BIT_SET(x, i) ((x)[BIT_INDEX(x, i)] |= 1LL << BIT_SHIFT(x, i))
-
 
 static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
 {
@@ -33,8 +28,6 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
     re2::Prog::Inst *op;
     ssize_t stack[256];
     ssize_t stkid = 0;
-    size_t  visited_size = (_prog->size() + sizeof(size_t) * 8 - 1) / (sizeof(size_t) * 8);
-    size_t *visited = new size_t[visited_size]();
     int *capture;
 
     while (rejit_thread_dispatch(nfa, 1)) {
@@ -43,11 +36,11 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
         capture = nfa->running->groups;
 
         while (stkid--) {
-            if (BIT_GET(visited, stack[stkid])) {
+            if (BIT_GET(nfa->states_visited, stack[stkid])) {
                 continue;
             }
 
-            BIT_SET(visited, stack[stkid]);
+            BIT_SET(nfa->states_visited, stack[stkid]);
             op = _prog->inst(stack[stkid]);
 
             switch (op->opcode()) {
@@ -58,7 +51,6 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
 
                 case re2::kInstAltMatch:
                     debug::write("re2jit::it: can't interpret kInstAltMatch\n");
-                    delete[] visited;
                     return 0;
 
                 case re2::kInstByteRange: {
@@ -111,18 +103,10 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
 
                 default:
                     debug::write("re2jit::it: unknown opcode %d\n", op->opcode());
-                    delete[] visited;
                     return 0;
             }
         }
-
-        if (nfa->queues[nfa->active_queue].first == rejit_list_end(&nfa->queues[nfa->active_queue])) {
-            // this bit vector is shared across all threads on a single queue.
-            // whichever thread first enters a state gets to own that state.
-            memset(visited, 0, sizeof(size_t) * visited_size);
-        }
     }
 
-    delete[] visited;
     return 1;
 }
