@@ -62,7 +62,7 @@ namespace re2jit
         // A-a-a-and C++ is worse than C99.
         nfa.input  = text.data();
         nfa.length = (size_t) text.size();
-        nfa.groups = (size_t) (nmatch * 2 + 2);
+        nfa.groups = nmatch ? (size_t) nmatch * 2 : 2;
         nfa.entry  = _entry(_platform);
         nfa.flags  = anchor == RE2::ANCHOR_START  ? RE2JIT_ANCHOR_START :
                      anchor == RE2::ANCHOR_BOTH   ? RE2JIT_ANCHOR_START | RE2JIT_ANCHOR_END :
@@ -78,10 +78,10 @@ namespace re2jit
         int *gs = NULL, r = rejit_thread_result(&nfa, &gs);
 
         for (int i = 0; i < nmatch; i++) {
-            if (gs == NULL || gs[2 * i + 2] == -1)
+            if (gs == NULL || gs[2 * i] == -1)
                 match[i].set((const char *) NULL, 0);
             else
-                match[i].set(text.data() + gs[2 * i + 2], gs[2 * i + 3] - gs[2 * i + 2]);
+                match[i].set(text.data() + gs[2 * i], gs[2 * i + 1] - gs[2 * i]);
         }
 
         rejit_thread_free(&nfa);
