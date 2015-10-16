@@ -30,7 +30,7 @@ _require_library = \
 
 _require_test_run = \
 	test/basic \
-	test/jit
+	test/groups
 
 
 ARCHIVE = ar rcs
