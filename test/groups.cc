@@ -16,3 +16,7 @@
 
 
 GROUP_TEST("Hello, (.*)!", ANCHOR_START, "Hello, World!", 2);
+GROUP_TEST("([^ ]*?), (.*)", UNANCHORED, "Hi there, world!", 3);
+GROUP_TEST("([+-]?(?:(0b)[01]+|(0o)[0-7]+|(0x)[0-9a-f]+))", ANCHOR_BOTH, "0b00010", 6);
+GROUP_TEST("([+-]?(?:(0b)[01]+|(0o)[0-7]+|(0x)[0-9a-f]+|[0-9]+((?:\\.[0-9]+)?(?:e[+-]?[0-9]+)?)(j)?))", ANCHOR_BOTH, "0b00010", 6);
+GROUP_TEST("([+-]?(?:(0b)[01]+|(0o)[0-7]+|(0x)[0-9a-f]+|[0-9]+((?:\\.[0-9]+)?(?:e[+-]?[0-9]+)?)(j)?))", ANCHOR_BOTH, "30.5e+1j", 6);
