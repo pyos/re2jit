@@ -16,3 +16,7 @@ SIMPLE_TEST("[hH]ello,? +[Ww]orld(\\?|!|\\.|)", ANCHOR_START, "1 Hello, World!")
 SIMPLE_TEST("[hH]ello,? +[Ww]orld(\\?|!|\\.|)", ANCHOR_BOTH, "Hello, World");
 SIMPLE_TEST("[hH]ello,? +[Ww]orld(\\?|!|\\.|)", ANCHOR_BOTH, "Hello, World! 2");
 SIMPLE_TEST("[hH]ello,? +[Ww]orld(\\?|!|\\.|)", ANCHOR_BOTH, "1 Hello, World!");
+// Infinite empty arrow loop, should not freeze:
+SIMPLE_TEST("(x*)*y", ANCHOR_START, "x");
+// Will result in exponential blowup if not actually an NFA/DFA:
+SIMPLE_TEST("(x+x+)+y", ANCHOR_START, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");

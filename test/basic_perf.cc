@@ -6,3 +6,5 @@
 PERF_TEST(1000000, "Hello, World!", ANCHOR_START, "Hello, World!")
 PERF_TEST(1000000, "[hH]ello,? +[Ww]orld(\\?|!|\\.|)", ANCHOR_START, "Hello, World!")
 PERF_TEST(1000000, "[hH]ello,? +[Ww]orld(\\?|!|\\.|)", ANCHOR_START, "Hello, Worldd")
+PERF_TEST(10000, "(x*)*y", ANCHOR_START, "x")
+PERF_TEST(10000, "(x+x+)+y", ANCHOR_START, "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
