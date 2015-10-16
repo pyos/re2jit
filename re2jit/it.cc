@@ -78,7 +78,7 @@ namespace re2jit
         int *gs = NULL, r = rejit_thread_result(&nfa, &gs);
 
         for (int i = 0; i < nmatch; i++) {
-            if (gs == NULL || gs[2 * i] == -1)
+            if (gs == NULL || gs[2 * i] == -1 || gs[2 * i + 1] == -1)
                 match[i].set((const char *) NULL, 0);
             else
                 match[i].set(text.data() + gs[2 * i], gs[2 * i + 1] - gs[2 * i]);
