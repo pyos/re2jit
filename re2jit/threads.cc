@@ -4,7 +4,7 @@
 #include "threads.h"
 
 
-static struct rejit_thread_t *rejit_thread_new(struct rejit_threadset_t *r)
+static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
 {
     struct rejit_thread_t *t;
 
@@ -28,9 +28,40 @@ static struct rejit_thread_t *rejit_thread_new(struct rejit_threadset_t *r)
 }
 
 
+static void rejit_thread_release(struct rejit_threadset_t *r, struct rejit_thread_t *t)
+{
+    t->_prev_before_reclaiming = t->prev;
+    rejit_list_remove(t);
+    rejit_list_remove(&t->category);
+    t->next = r->free;
+    r->free = t;
+}
+
+
+static struct rejit_thread_t *rejit_thread_reclaim(struct rejit_threadset_t *r)
+{
+    struct rejit_thread_t *t = rejit_thread_acquire(r);
+
+    if (t == NULL) {
+        return NULL;
+    }
+
+    if (t == r->running) {
+        // `groups` has not been modified since `release`.
+        rejit_list_append(t->_prev_before_reclaiming, t);
+    } else {
+        // `r->running` has already been reclaimed.
+        memcpy(t->groups, r->running->groups, sizeof(int) * r->groups);
+        rejit_list_append(r->running, t);
+    }
+
+    return t;
+}
+
+
 static struct rejit_thread_t *rejit_thread_entry(struct rejit_threadset_t *r)
 {
-    struct rejit_thread_t *t = rejit_thread_new(r);
+    struct rejit_thread_t *t = rejit_thread_acquire(r);
 
     if (t == NULL) {
         return NULL;
@@ -101,12 +132,13 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps)
         while (t != rejit_list_end(&r->queues[queue])) {
             r->running = t->ref;
 
+            rejit_thread_release(r, r->running);
+
             #if !RE2JIT_VM
-                t->ref->entry(r);
+                r->running->entry(r);
             #endif
 
             if (!--max_steps) {
-                r->active_queue = queue;
                 return 1;
             }
 
@@ -142,66 +174,49 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps)
 }
 
 
-void rejit_thread_fork(struct rejit_threadset_t *r, rejit_entry_t entry)
+int rejit_thread_match(struct rejit_threadset_t *r)
 {
-    struct rejit_thread_t *t = rejit_thread_new(r);
-    struct rejit_thread_t *p = r->running;
+    if ((r->flags & RE2JIT_ANCHOR_END) && r->length) {
+        // No, it did not. Not EOF yet.
+        return 0;
+    }
+
+    struct rejit_thread_t *t = rejit_thread_reclaim(r);
+
+    while (t->next != rejit_list_end(&r->all_threads)) {
+        // Can safely fail all less important threads. If they fail, this one
+        // has matched, so whatever. If they match, this one contains better results.
+        rejit_thread_release(r, t->next);
+    }
+
+    // Remove this thread from the queue, but leave it in the list of all threads.
+    rejit_list_remove(&t->category);
+    return 0;
+}
+
+
+void rejit_thread_wait(struct rejit_threadset_t *r, rejit_entry_t entry, size_t shift)
+{
+    struct rejit_thread_t *t = rejit_thread_reclaim(r);
 
     if (t == NULL) {
         // :33 < oh shit
         return;
     }
 
-    memcpy(t->groups, p->groups, sizeof(int) * r->groups);
     t->entry = entry;
 
-    rejit_list_append(p, t);
-    rejit_list_append(&p->category, &t->category);
-}
-
-
-void rejit_thread_match(struct rejit_threadset_t *r)
-{
-    struct rejit_thread_t *p = r->running;
-
-    if ((r->flags & RE2JIT_ANCHOR_END) && r->length) {
-        // No, it did not. Not EOF yet.
-        rejit_thread_fail(r);
-        return;
-    }
-
-    while (p->next != rejit_list_end(&r->all_threads)) {
-        // Can safely fail all less important threads. If they fail, this one
-        // has matched, so whatever. If they match, this one contains better results.
-        r->running = p->next;
-        rejit_thread_fail(r);
-    }
-
-    rejit_list_remove(&p->category);
-}
-
-
-void rejit_thread_fail(struct rejit_threadset_t *r)
-{
-    struct rejit_thread_t *p = r->running;
-    rejit_list_remove(p);
-    rejit_list_remove(&p->category);
-    p->next = r->free;
-    r->free = p;
-}
-
-
-void rejit_thread_wait(struct rejit_threadset_t *r, size_t shift)
-{
     size_t queue = (r->active_queue + shift) % (RE2JIT_THREAD_LOOKAHEAD + 1);
-    struct rejit_thread_t *p = r->running;
-    rejit_list_remove(&p->category);
-    rejit_list_append(r->queues[queue].last, &p->category);
+    rejit_list_append(r->queues[queue].last, &t->category);
 }
 
 
 int rejit_thread_result(struct rejit_threadset_t *r, int **groups)
 {
+    if (r->flags & RE2JIT_THREAD_FAILED) {
+        return 0;
+    }
+
     if (r->all_threads.first == rejit_list_end(&r->all_threads)) {
         return 0;
     }

@@ -75,11 +75,6 @@ namespace re2jit
             return FAILED;
         }
 
-        if (nfa.flags & RE2JIT_THREAD_FAILED) {
-            // already free'd.
-            return FAILED;
-        }
-
         int *gs = NULL, r = rejit_thread_result(&nfa, &gs);
 
         for (int i = 0; i < nmatch; i++) {

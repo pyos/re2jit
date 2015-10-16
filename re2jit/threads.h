@@ -93,6 +93,7 @@ extern "C" {
          * is always inserted exactly after its parent. If multiple threads match,
          * the one with the highest priority provides the group-to-index mapping. */
         RE2JIT_LIST_LINK(struct rejit_thread_t);
+        struct rejit_thread_t *_prev_before_reclaiming;
         /* Doubly-linked list of all threads in a single queue.
          * Queues are rotated in and out as the input string pointer advances;
          * see `thread_dispatch`. */
@@ -151,17 +152,12 @@ extern "C" {
      * the regex matched. Otherwise, return 1. */
     int rejit_thread_dispatch(struct rejit_threadset_t *, int max_steps);
 
-    /* Fork a new thread off the currently running one. */
-    void rejit_thread_fork(struct rejit_threadset_t *, rejit_entry_t);
+    /* Claim that the currently running thread has matched the input string.
+     * Returns 0 if it has actually failed, 1 otherwise. */
+    int rejit_thread_match(struct rejit_threadset_t *);
 
-    /* Claim that the currently running thread has matched the input string. */
-    void rejit_thread_match(struct rejit_threadset_t *);
-
-    /* Destroy the currently running thread because it failed to match. */
-    void rejit_thread_fail(struct rejit_threadset_t *);
-
-    /* Make the current thread wait for N more bytes. */
-    void rejit_thread_wait(struct rejit_threadset_t *, size_t);
+    /* Fork a new thread off the currently running one and make it wait for N more bytes. */
+    void rejit_thread_wait(struct rejit_threadset_t *, rejit_entry_t, size_t);
 
     /* Check whether any thread has matched the string, return 1 for a match
      * and 0 otherwise. If a match exists, the thread's array of subgroup locations
