@@ -50,10 +50,6 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
             BIT_SET(visited, stack[stkid]);
             op = _prog->inst(stack[stkid]);
 
-            if (stack[stkid] == _prog->start()) {
-                capture[0] = nfa->offset;
-            }
-
             switch (op->opcode()) {
                 case re2::kInstAlt:
                     stack[stkid++] = op->out1();
@@ -103,8 +99,6 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
                     break;
 
                 case re2::kInstMatch:
-                    capture[1] = nfa->offset;
-
                     if (rejit_thread_match(nfa)) {
                         // this match is preferred to whatever is still on stack.
                         stkid = 0;

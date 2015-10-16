@@ -67,8 +67,9 @@ static struct rejit_thread_t *rejit_thread_entry(struct rejit_threadset_t *r)
         return NULL;
     }
 
-    t->entry = r->entry;
     memset(t->groups, 255, sizeof(int) * r->groups);
+    t->entry = r->entry;
+    t->groups[0] = r->offset;
     rejit_list_append(r->all_threads.last, t);
     rejit_list_append(r->queues[r->active_queue].last, &t->category);
     return t;
@@ -156,12 +157,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps)
             return 0;
         }
 
-        if (!(r->flags & RE2JIT_ANCHOR_START)) {
-            if (rejit_thread_entry(r) == NULL) {
-                // XOO < *ac was completely screwed out of memory
-                //        and nothing can fix that!!*
-            }
-        }
+        r->offset++;
 
         r->empty &= ~(RE2JIT_EMPTY_BEGIN_LINE | RE2JIT_EMPTY_BEGIN_TEXT);
 
@@ -173,8 +169,14 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps)
             r->empty |= RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT;
         }
 
-        r->offset++;
         // Word boundaries not supported because UTF-8.
+
+        if (!(r->flags & RE2JIT_ANCHOR_START)) {
+            if (rejit_thread_entry(r) == NULL) {
+                // XOO < *ac was completely screwed out of memory
+                //        and nothing can fix that!!*
+            }
+        }
     }
 }
 
@@ -187,6 +189,8 @@ int rejit_thread_match(struct rejit_threadset_t *r)
     }
 
     struct rejit_thread_t *t = rejit_thread_reclaim(r);
+
+    t->groups[1] = r->offset;
 
     while (t->next != rejit_list_end(&r->all_threads)) {
         // Can safely fail all less important threads. If they fail, this one
