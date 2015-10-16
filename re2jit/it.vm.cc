@@ -42,8 +42,6 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
         stack[stkid++] = (ssize_t) nfa->running->entry;
         capture = nfa->running->groups;
 
-        memset(visited, 0, sizeof(size_t) * visited_size);
-
         while (stkid--) {
             if (BIT_GET(visited, stack[stkid])) {
                 continue;
@@ -68,6 +66,10 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
                     return 0;
 
                 case re2::kInstByteRange: {
+                    if (!nfa->length) {
+                        break;
+                    }
+
                     char c = nfa->input[0];
 
                     if (op->foldcase() && 'A' <= c && c <= 'Z') {
@@ -83,7 +85,10 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
                 }
 
                 case re2::kInstCapture:
-                    // TODO
+                    if ((size_t) op->cap() < nfa->groups) {
+                        capture[op->cap()] = nfa->offset;
+                    }
+
                     stack[stkid++] = op->out();
                     break;
 
@@ -115,6 +120,12 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
                     delete[] visited;
                     return 0;
             }
+        }
+
+        if (nfa->queues[nfa->active_queue].first == rejit_list_end(&nfa->queues[nfa->active_queue])) {
+            // this bit vector is shared across all threads on a single queue.
+            // whichever thread first enters a state gets to own that state.
+            memset(visited, 0, sizeof(size_t) * visited_size);
         }
     }
 
