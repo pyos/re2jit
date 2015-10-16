@@ -148,6 +148,11 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps)
         r->active_queue = queue = (queue + 1) % (RE2JIT_THREAD_LOOKAHEAD + 1);
 
         if (!r->length) {
+            if (r->queues[queue].first != rejit_list_end(&r->queues[queue])) {
+                // Allow remaining greedy threads to fail.
+                continue;
+            }
+
             return 0;
         }
 
