@@ -78,8 +78,9 @@ extern "C" {
         /* While the JIT-compiled code is not expected to be a function,
          * it should at least behave like one. A thread's entry point should expect
          * to receive a pointer to the NFA where the first argument should be,
+         * the bit vector that marks already visited states in place of the second arg,
          * and use the standard return mechanisms to get back to `thread_dispatch`. */
-        typedef void (*rejit_entry_t)(struct rejit_threadset_t *);
+        typedef void (*rejit_entry_t)(struct rejit_threadset_t *, uint8_t *);
     #endif
 
 
