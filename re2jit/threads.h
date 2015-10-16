@@ -20,6 +20,7 @@ extern "C" {
      *
      */
     #include <stdlib.h>
+    #include <stdint.h>
 
     #include "list.h"
 
@@ -120,7 +121,7 @@ extern "C" {
         size_t offset;
         size_t length;
         size_t states;
-        size_t *states_visited;
+        uint8_t *states_visited;
         /* Entry point of the initial thread. */
         rejit_entry_t entry;
         /* Actual length of `thread_t.groups`. Must be at least 2. */
