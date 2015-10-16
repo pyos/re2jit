@@ -17,7 +17,7 @@ static inline void _destroy(void *)
 
 static inline rejit_entry_t _entry(void *prog)
 {
-    // When in VM mode, entry points are
+    // When in VM mode, entry points are bytecode offsets.
     return (rejit_entry_t) ((re2::Prog *) prog)->start();
 }
 
@@ -34,7 +34,7 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
     ssize_t stack[256];
     ssize_t stkid = 0;
     size_t  visited_size = (_prog->size() + sizeof(size_t) * 8 - 1) / (sizeof(size_t) * 8);
-    size_t *visited = new size_t[visited_size];
+    size_t *visited = new size_t[visited_size]();
     int *capture;
 
     while (rejit_thread_dispatch(nfa, 1)) {
