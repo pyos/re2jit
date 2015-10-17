@@ -66,12 +66,12 @@ extern "C" {
 
     #if RE2JIT_VM
         // In VM mode, "entry points" are indices into the opcode array.
+        // TODO not handle that as a special case somehow.
         typedef size_t rejit_entry_t;
     #else
-        /* While the JIT-compiled code is not expected to be a function,
-         * it should at least behave like one. A thread's entry point should expect
-         * to receive a pointer to the NFA where the first argument should be,
-         * and use the standard return mechanisms to get back to `thread_dispatch`. */
+        /* The JIT-compiled code is expected to behave like a function at each opcode,
+         * accepting an NFA as the first "argument" and "returning" when it has exhausted
+         * all empty-length arrows. */
         typedef void (*rejit_entry_t)(struct rejit_threadset_t *);
     #endif
 
