@@ -81,7 +81,7 @@ int rejit_thread_init(struct rejit_threadset_t *r)
 {
     rejit_list_init(&r->all_threads);
 
-    r->visited = (uint8_t *) calloc(sizeof(uint8_t), BIT_VEC_LENGTH(r->visited, r->states));
+    r->visited = (uint8_t *) calloc(sizeof(uint8_t), (r->states + 7) / 8);
 
     if (r->visited == NULL) {
         return 0;
@@ -156,7 +156,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r)
 
         // this bit vector is shared across all threads on a single queue.
         // whichever thread first enters a state gets to own that state.
-        memset(r->visited, 0, sizeof(r->visited[0]) * BIT_VEC_LENGTH(r->visited, r->states));
+        memset(r->visited, 0, (r->states + 7) / 8);
 
         r->active_queue = queue = (queue + 1) % (RE2JIT_THREAD_LOOKAHEAD + 1);
 

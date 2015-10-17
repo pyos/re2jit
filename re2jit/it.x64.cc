@@ -110,19 +110,17 @@ struct re2jit::native
             // Return value:
             //   %rax :: int -- 1 if found a match, 0 otherwise
 
-            #define _BYTE_ARRAY ((struct rejit_threadset_t *) 0)->visited
             // kInstFail will do `ret` anyway.
             if (op->opcode() != re2::kInstFail && indegree[i] > 1) {
                 //    mov (%rdi).visited, %rsi
                 MOVB_MRDI_RSI(offsetof(struct rejit_threadset_t, visited));
-                //    test offset(i), %rsi[index(i)]
-                TEST_IMMB_MRSI(1 << BIT_SHIFT(_BYTE_ARRAY, i), BIT_INDEX(_BYTE_ARRAY, i));
+                //    test 1<<(i%8), %rsi[i / 8]
+                TEST_IMMB_MRSI(1 << (i % 8), i / 8);
                 //    ret [if non-zero]
                 RETQ_IF(JMP_NE);
-                //    or offset(i), %rsi[index(i)]
-                ORB_IMM_MRSI(1 << BIT_SHIFT(_BYTE_ARRAY, i), BIT_INDEX(_BYTE_ARRAY, i));
+                //    or 1<<(i%8), %rsi[i / 8]
+                ORB_IMM_MRSI(1 << (i % 8), i / 8);
             }
-            #undef _BYTE_ARRAY
 
             switch (op->opcode()) {
                 case re2::kInstAlt:

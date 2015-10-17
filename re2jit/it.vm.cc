@@ -24,12 +24,15 @@ struct re2jit::native
             stack[stkid++] = nfa->running->entry;
 
             while (stkid--) {
-                if (BIT_GET(nfa->visited, stack[stkid])) {
+                ssize_t i = stack[stkid];
+
+                if (nfa->visited[i / 8] & (1 << (i % 8))) {
                     continue;
                 }
 
-                BIT_SET(nfa->visited, stack[stkid]);
-                op = _prog->inst(stack[stkid]);
+                nfa->visited[i / 8] |= 1 << (i % 8);
+
+                op = _prog->inst(i);
 
                 switch (op->opcode()) {
                     case re2::kInstAlt:

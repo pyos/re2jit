@@ -25,12 +25,6 @@ extern "C" {
 
     #include "list.h"
 
-    #define BIT_VEC_LENGTH(x, n) (BIT_INDEX(x, n - 1) + 1)
-    #define BIT_INDEX(x, i) ((i) / (sizeof((x)[0]) * 8))
-    #define BIT_SHIFT(x, i) ((i) % (sizeof((x)[0]) * 8))
-    #define BIT_GET(x, i) ((x)[BIT_INDEX(x, i)] & (1LL << BIT_SHIFT(x, i)))
-    #define BIT_SET(x, i) ((x)[BIT_INDEX(x, i)] |= 1LL << BIT_SHIFT(x, i))
-
     /* Maximum number of bytes a thread can consume per one opcode.
      * Normally, re2 only emits opcodes that match a single byte. I got this sweet
      * idea to "invent" some opcodes that can match whole UTF-8 characters, though... */
