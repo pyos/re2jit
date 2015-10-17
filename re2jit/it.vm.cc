@@ -45,14 +45,11 @@ struct re2jit::native
                 op = _prog->inst(i);
 
                 switch (op->opcode()) {
+                    case re2::kInstAltMatch:
                     case re2::kInstAlt:
                         stack[stkid++] = op->out1();
                         stack[stkid++] = op->out();
                         break;
-
-                    case re2::kInstAltMatch:
-                        re2jit::debug::write("re2jit::vm: can't interpret kInstAltMatch\n");
-                        return 0;
 
                     case re2::kInstByteRange: {
                         if (!nfa->length) {

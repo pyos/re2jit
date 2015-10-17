@@ -123,6 +123,7 @@ struct re2jit::native
             }
 
             switch (op->opcode()) {
+                case re2::kInstAltMatch:
                 case re2::kInstAlt:
                     //    call code+vtable[out]
                     PUSH_RDI(); CALL_TBL(op->out()); POP_RDI();
@@ -135,11 +136,6 @@ struct re2jit::native
                     }
 
                     break;
-
-                case re2::kInstAltMatch:
-                    // TODO find out what exactly this opcode is
-                    re2jit::debug::write("re2jit::x64: unsupported opcode kInstAltMatch\n");
-                    return;
 
                 case re2::kInstByteRange:
                     //    cmp $0, (%rdi).length
