@@ -8,8 +8,9 @@
             if (g2[i] != gj[i]) { \
                 return Result::Fail( \
                     "group %zu incorrect\n" \
-                    "    expected [%d] '%s'\n" \
-                    "    matched  [%d] '%s'", i, g2[i].size(), g2[i].data(), gj[i].size(), gj[i].data()); \
+                    "    expected [%d] '%.*s'\n" \
+                    "    matched  [%d] '%.*s'", i, g2[i].size(), g2[i].size(), g2[i].data(), \
+                                                   gj[i].size(), gj[i].size(), gj[i].data()); \
             } \
         } \
     }
