@@ -59,7 +59,10 @@ Ugh.)
 
  * x86-64 on \*nix (System V calling convention **required**)
  * Everything else - only through an interpreter, which is a slightly slower version of re2's
-   NFA. So don't use it.
+   NFA. At least, most of the time it *is* slightly slower. Sometimes it is a lot faster
+   for some reason, which is pretty weird. (For an example see
+   [tests/long.cc](https://github.com/pyos/re2jit/blob/master/test/long.cc#L36).)
+   Point is, don't use it.
 
 ### In fact,
 
