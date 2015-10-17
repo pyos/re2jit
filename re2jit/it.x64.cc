@@ -198,14 +198,20 @@ struct re2jit::native
                     MOVB_MRDI_RCX(offsetof(struct rejit_threadset_t, running));
                     //    mov (%rdi).offset, %rax
                     MOVB_MRDI_RAX(offsetof(struct rejit_threadset_t, offset));
+                    //    mov (%rcx).groups[cap], %esi
+                    MOVL_MRCX_ESI(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
                     //    mov %eax, (%rcx).groups[cap]
                     MOVL_EAX_MRCX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
 
-                    if ((size_t) op->out() != i + 1) {
-                        //    jmp code+vtable[out]
-                        JMP_UNCOND_TBL(op->out());
-                    }
+                    //    call code+vtable[out]
+                    PUSH_RDI(); PUSH_RSI(); CALL_TBL(op->out()); POP_RSI(); POP_RDI();
 
+                    //    mov (%rdi).running, %rcx
+                    MOVB_MRDI_RCX(offsetof(struct rejit_threadset_t, running));
+                    //    mov %esi, (%rcx).groups[cap]
+                    MOVL_ESI_MRCX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
+                    //    ret
+                    RETQ();
                     break;
 
                 case re2::kInstEmptyWidth:

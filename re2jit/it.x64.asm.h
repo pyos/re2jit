@@ -31,11 +31,13 @@
 #define MOVB_MRDI_RAX(p) INSCODE(0x48, 0x8b, 0x47, IMM8(p, 0))
 #define MOVB_MRDI_RCX(p) INSCODE(0x48, 0x8b, 0x4f, IMM8(p, 0))
 #define MOVB_MRDI_RSI(p) INSCODE(0x48, 0x8b, 0x77, IMM8(p, 0))
+#define MOVL_MRCX_ESI(p) INSCODE(      0x8b, 0xB1, IMM32(p))
 
 
 // mov r32/64, m64=imm8/32(r64)
 #define MOVB_EAX_MRCX(p) INSCODE(      0x89, 0x41, IMM8(p, 0))
 #define MOVL_EAX_MRCX(p) INSCODE(      0x89, 0x81, IMM32(p))
+#define MOVL_ESI_MRCX(p) INSCODE(      0x89, 0xB1, IMM32(p))
 
 
 // cmp imm8/32, r8/64
@@ -67,7 +69,9 @@
 #define ORB_IMM_MRSI(imm, d) INSCODE(0x80, 0x8E, IMM32(d), IMM8(imm, 0))
 
 // stack r64
+#define PUSH_RSI() INSCODE(0x56)
 #define PUSH_RDI() INSCODE(0x57)
+#define POP_RSI()  INSCODE(0x5E)
 #define POP_RDI()  INSCODE(0x5F)
 
 // call imm32, relative near
