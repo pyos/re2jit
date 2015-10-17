@@ -171,7 +171,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r)
 
         r->offset++;
 
-        r->empty &= ~(RE2JIT_EMPTY_BEGIN_LINE | RE2JIT_EMPTY_BEGIN_TEXT);
+        r->empty = 0;
 
         if (*r->input++ == '\n') {
             r->empty |= RE2JIT_EMPTY_BEGIN_LINE;
@@ -179,6 +179,8 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r)
 
         if (! --(r->length)) {
             r->empty |= RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT;
+        } else if (*r->input == '\n') {
+            r->empty |= RE2JIT_EMPTY_END_LINE;
         }
 
         // Word boundaries not supported because UTF-8.
