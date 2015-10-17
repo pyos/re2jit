@@ -24,7 +24,7 @@ extern "C" {
 
     #include "list.h"
 
-
+    #define BIT_VEC_LENGTH(x, n) (BIT_INDEX(x, n - 1) + 1)
     #define BIT_INDEX(x, i) ((i) / (sizeof((x)[0]) * 8))
     #define BIT_SHIFT(x, i) ((i) % (sizeof((x)[0]) * 8))
     #define BIT_GET(x, i) ((x)[BIT_INDEX(x, i)] & (1LL << BIT_SHIFT(x, i)))
@@ -114,7 +114,9 @@ extern "C" {
         size_t offset;
         size_t length;
         size_t states;
-        uint8_t *states_visited;
+        /* Bit vector used to mark visited states when handling each character.
+         * (Used to avoid infinite loops when following empty arrows.) */
+        uint8_t *visited;
         /* Entry point of the initial thread. */
         rejit_entry_t entry;
         /* Actual length of `thread_t.groups`. Must be at least 2. */
@@ -142,8 +144,8 @@ extern "C" {
 
     /* Finish initialization of an NFA. Input, its length, optional flags, number of
      * capturing parentheses, and the initial entry point should be populated
-     * prior to calling this. */
-    void rejit_thread_init(struct rejit_threadset_t *);
+     * prior to calling this. Returns 0 on failure. */
+    int rejit_thread_init(struct rejit_threadset_t *);
 
     /* Deallocate all threads. */
     void rejit_thread_free(struct rejit_threadset_t *);
