@@ -210,19 +210,20 @@ int rejit_thread_match(struct rejit_threadset_t *r)
 }
 
 
-void rejit_thread_wait(struct rejit_threadset_t *r, rejit_entry_t entry, size_t shift)
+int rejit_thread_wait(struct rejit_threadset_t *r, rejit_entry_t entry, size_t shift)
 {
     struct rejit_thread_t *t = rejit_thread_reclaim(r);
 
     if (t == NULL) {
         // :33 < oh shit
-        return;
+        return 0;
     }
 
     t->entry = entry;
 
     size_t queue = (r->active_queue + shift) % (RE2JIT_THREAD_LOOKAHEAD + 1);
     rejit_list_append(r->queues[queue].last, &t->category);
+    return 0;
 }
 
 

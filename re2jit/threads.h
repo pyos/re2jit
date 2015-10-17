@@ -167,8 +167,9 @@ extern "C" {
      * Returns 0 if it has actually failed, 1 otherwise. */
     int rejit_thread_match(struct rejit_threadset_t *);
 
-    /* Fork a new thread off the currently running one and make it wait for N more bytes. */
-    void rejit_thread_wait(struct rejit_threadset_t *, rejit_entry_t, size_t);
+    /* Fork a new thread off the currently running one and make it wait for N more bytes.
+     * Always returns 0. */
+    int rejit_thread_wait(struct rejit_threadset_t *, rejit_entry_t, size_t);
 
     /* Check whether any thread has matched the string, return 1 for a match
      * and 0 otherwise. If a match exists, the thread's array of subgroup locations
