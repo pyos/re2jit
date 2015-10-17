@@ -191,12 +191,11 @@ static inline void *_compile(re2::Prog *prog)
 
             case re2::kInstNop:
             case re2::kInstCapture:
+            case re2::kInstByteRange:
             case re2::kInstEmptyWidth:
                 is_jump_target[op->out()]++;
                 break;
 
-            // kInstByteRange stops until the next byte, by which point
-            // the bit vector will already be reset back to zero.
             default: break;
         }
     }
