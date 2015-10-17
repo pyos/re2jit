@@ -84,6 +84,11 @@ namespace re2jit
 
     fallback:
         debug::write("re2jit::it: falling back to re2\n");
+
+        #ifdef RE2JIT_NO_FALLBACK
+            return 0;
+        #endif
+
         return RE2::Match(text, 0, text.size(), anchor, match, nmatch);
     }
 };

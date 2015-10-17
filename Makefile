@@ -9,6 +9,10 @@ ifdef ENABLE_DEBUG
 CXXFLAGS += -DRE2JIT_DEBUG
 endif
 
+ifdef DISABLE_FALLBACK
+CXXFLAGS += -DRE2JIT_NO_FALLBACK
+endif
+
 _require_vendor = \
 	re2/obj/libre2.a
 
