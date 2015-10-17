@@ -191,24 +191,15 @@ struct re2jit::native
                 case re2::kInstCapture:
                     //    cmp cap, (%rdi).groups
                     CMPL_IMM_MRDI(op->cap(), offsetof(struct rejit_threadset_t, groups));
-                    //    jae code+vtable[out]
+                    //    jbe code+vtable[out]
                     JMP_TBL(JMP_LE_U, op->out());
 
                     //    mov (%rdi).running, %rcx
                     MOVB_MRDI_RCX(offsetof(struct rejit_threadset_t, running));
                     //    mov (%rdi).offset, %rax
                     MOVB_MRDI_RAX(offsetof(struct rejit_threadset_t, offset));
-
-                    {
-                        //    mov %eax, (%rcx).groups[cap]
-                        size_t off = offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap();
-
-                        if (off < 256) {
-                            MOVB_EAX_MRCX(off);
-                        } else {
-                            MOVL_EAX_MRCX(off);
-                        }
-                    }
+                    //    mov %eax, (%rcx).groups[cap]
+                    MOVL_EAX_MRCX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
 
                     if ((size_t) op->out() != i + 1) {
                         //    jmp code+vtable[out]
