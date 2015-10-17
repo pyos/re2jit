@@ -29,7 +29,6 @@ static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
 
 static void rejit_thread_release(struct rejit_threadset_t *r, struct rejit_thread_t *t)
 {
-    t->_prev_before_release = t->prev;
     rejit_list_remove(t);
     rejit_list_remove(&t->category);
     t->next = r->free;
@@ -47,15 +46,12 @@ static struct rejit_thread_t *rejit_thread_reclaim(struct rejit_threadset_t *r)
         return NULL;
     }
 
-    if (t == r->running) {
-        rejit_list_append(t->_prev_before_release, t);
-    } else {
-        // `r->running` has already been reclaimed.
+    if (t != r->running) {
         memcpy(t->groups, r->running->groups, sizeof(int) * r->groups);
-        rejit_list_append(r->running, t);
     }
 
-    return t;
+    rejit_list_append(r->forked, t);
+    return r->forked = t;
 }
 
 
@@ -142,6 +138,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r)
 
         while (t != rejit_list_end(&r->queues[queue])) {
             r->running = RE2JIT_DEREF_THREAD(t);
+            r->forked  = RE2JIT_DEREF_THREAD(t)->prev;
 
             rejit_thread_release(r, RE2JIT_DEREF_THREAD(t));
 

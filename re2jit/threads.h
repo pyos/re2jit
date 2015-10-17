@@ -75,9 +75,6 @@ extern "C" {
         /* Doubly-linked list of all threads, ordered by descending priority.
          * When a thread forks off, it is inserted directly after its parent. */
         RE2JIT_LIST_LINK(struct rejit_thread_t);
-        /* When a thread is released, its position in the list is lost.
-         * We may need to restore a previously released thread, though. */
-        struct rejit_thread_t *_prev_before_release;
         /* Doubly-linked list of all threads in a single queue.
          * Queues are rotated in and out as the input string pointer advances;
          * see `thread_dispatch`. */
@@ -125,6 +122,9 @@ extern "C" {
         RE2JIT_LIST_ROOT(struct rejit_thread_t) all_threads;
         /* Currently active thread, set by `thread_dispatch`. */
         struct rejit_thread_t *running;
+        /* Last (so far) thread forked off the currently running one. Threads are created
+         * in descending priority, so the next one should be inserted after this one. */
+        struct rejit_thread_t *forked;
         /* Linked list of failed threads. These can be reused to avoid allocations. */
         struct rejit_thread_t *free;
 
