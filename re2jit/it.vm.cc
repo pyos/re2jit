@@ -1,7 +1,7 @@
 #include "it.h"
 #include "debug.h"
 #include "threads.h"
-#define STACK_SIZE 256
+#define STACK_SIZE 1024
 
 
 struct re2jit::native
