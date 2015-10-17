@@ -35,13 +35,12 @@
 
 
 // mov r32/64, m64=imm8/32(r64)
-#define MOVB_EAX_MRCX(p) INSCODE(      0x89, 0x41, IMM8(p, 0))
-#define MOVL_EAX_MRCX(p) INSCODE(      0x89, 0x81, IMM32(p))
-#define MOVL_ESI_MRCX(p) INSCODE(      0x89, 0xB1, IMM32(p))
+#define MOVL_EAX_MRCX(p) INSCODE(0x89, 0x81, IMM32(p))
+#define MOVL_ESI_MRCX(p) INSCODE(0x89, 0xB1, IMM32(p))
 
 
 // cmp imm8/32, r8/64
-#define CMPB_IMM__CL(p) INSCODE(      0x80, 0xF9, IMM8(p, 0))
+#define CMPB_IMM__CL(p) INSCODE(0x80, 0xF9, IMM8(p, 0))
 
 
 // cmp imm8/32, m64=imm8(r64)
