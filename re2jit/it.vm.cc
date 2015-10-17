@@ -19,12 +19,22 @@ struct re2jit::native
         ssize_t stack[STACK_SIZE];
         ssize_t stkid;
 
+        ssize_t restore[STACK_SIZE];
+        ssize_t rstid;
+
         while (rejit_thread_dispatch(nfa)) {
-            stkid = 0;
-            stack[stkid++] = nfa->running->entry;
+            struct rejit_thread_t *t = nfa->running;
+
+            stkid = rstid = 0;
+            stack[stkid++] = t->entry;
 
             while (stkid--) {
                 ssize_t i = stack[stkid];
+
+                if (i < 0) {
+                    t->groups[-i] = restore[--rstid];
+                    continue;
+                }
 
                 if (nfa->visited[i / 8] & (1 << (i % 8))) {
                     continue;
@@ -65,7 +75,10 @@ struct re2jit::native
 
                     case re2::kInstCapture:
                         if ((size_t) op->cap() < nfa->groups) {
-                            nfa->running->groups[op->cap()] = nfa->offset;
+                            restore[rstid++] = t->groups[op->cap()];
+                            stack[stkid++] = -op->cap();
+
+                            t->groups[op->cap()] = nfa->offset;
                         }
 
                         stack[stkid++] = op->out();
