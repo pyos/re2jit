@@ -11,6 +11,7 @@ static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
     if (r->free) {
         t = r->free;
         r->free = t->next;
+        t->next = t;
         return t;
     }
 
@@ -36,9 +37,7 @@ static void rejit_thread_release(struct rejit_threadset_t *r, struct rejit_threa
 }
 
 
-// Restore the running thread from the free chain. (It was freed by `thread_dispatch`.)
-// It it has already been reclaimed, spawn a copy instead.
-static struct rejit_thread_t *rejit_thread_reclaim(struct rejit_threadset_t *r)
+static struct rejit_thread_t *rejit_thread_fork(struct rejit_threadset_t *r)
 {
     struct rejit_thread_t *t = rejit_thread_acquire(r);
 
@@ -46,10 +45,7 @@ static struct rejit_thread_t *rejit_thread_reclaim(struct rejit_threadset_t *r)
         return NULL;
     }
 
-    if (t != r->running) {
-        memcpy(t->groups, r->running->groups, sizeof(int) * r->groups);
-    }
-
+    memcpy(t->groups, r->running->groups, sizeof(int) * r->groups);
     rejit_list_append(r->forked, t);
     return r->forked = t;
 }
@@ -131,25 +127,40 @@ void rejit_thread_free(struct rejit_threadset_t *r)
 
 int rejit_thread_dispatch(struct rejit_threadset_t *r)
 {
+    #if RE2JIT_VM
+        if (r->running) {
+            r->running->next = r->free;
+            r->free = r->running;
+            r->running = NULL;
+        }
+    #endif
+
     size_t queue = r->active_queue;
 
     while (1) {
         struct rejit_thread_t *t = r->queues[queue].first;
 
         while (t != rejit_list_end(&r->queues[queue])) {
-            r->running = RE2JIT_DEREF_THREAD(t);
-            r->forked  = RE2JIT_DEREF_THREAD(t)->prev;
+            struct rejit_thread_t *q = RE2JIT_DEREF_THREAD(t);
 
-            rejit_thread_release(r, RE2JIT_DEREF_THREAD(t));
+            r->running = q;
+            r->forked  = q->prev;
+
+            rejit_list_remove(q);
+            rejit_list_remove(&q->category);
 
             #if RE2JIT_VM
                 return 1;
             #else
-                RE2JIT_DEREF_THREAD(t)->entry(r);
+                q->entry(r);
             #endif
+
+            rejit_thread_release(r, q);
 
             t = r->queues[queue].first;
         }
+
+        r->running = NULL;
 
         // this bit vector is shared across all threads on a single queue.
         // whichever thread first enters a state gets to own that state.
@@ -199,7 +210,7 @@ int rejit_thread_match(struct rejit_threadset_t *r)
         return 0;
     }
 
-    struct rejit_thread_t *t = rejit_thread_reclaim(r);
+    struct rejit_thread_t *t = rejit_thread_fork(r);
 
     t->groups[1] = r->offset;
 
@@ -217,7 +228,7 @@ int rejit_thread_match(struct rejit_threadset_t *r)
 
 int rejit_thread_wait(struct rejit_threadset_t *r, rejit_entry_t entry, size_t shift)
 {
-    struct rejit_thread_t *t = rejit_thread_reclaim(r);
+    struct rejit_thread_t *t = rejit_thread_fork(r);
 
     if (t == NULL) {
         // :33 < oh shit
