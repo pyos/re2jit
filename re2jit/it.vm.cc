@@ -59,7 +59,7 @@ struct re2jit::native
                             break;
                         }
 
-                        char c = nfa->input[0];
+                        uint8_t c = nfa->input[0];
 
                         if (op->foldcase() && 'A' <= c && c <= 'Z') {
                             c += 'a' - 'A';
