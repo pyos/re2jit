@@ -21,7 +21,6 @@ static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
         return NULL;
     }
 
-    t->category.ref = t;
     rejit_list_init(&t->category);
     rejit_list_init(t);
     return t;
@@ -30,7 +29,7 @@ static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
 
 static void rejit_thread_release(struct rejit_threadset_t *r, struct rejit_thread_t *t)
 {
-    t->_prev_before_reclaiming = t->prev;
+    t->_prev_before_release = t->prev;
     rejit_list_remove(t);
     rejit_list_remove(&t->category);
     t->next = r->free;
@@ -38,6 +37,8 @@ static void rejit_thread_release(struct rejit_threadset_t *r, struct rejit_threa
 }
 
 
+// Restore the running thread from the free chain. (It was freed by `thread_dispatch`.)
+// It it has already been reclaimed, spawn a copy instead.
 static struct rejit_thread_t *rejit_thread_reclaim(struct rejit_threadset_t *r)
 {
     struct rejit_thread_t *t = rejit_thread_acquire(r);
@@ -47,8 +48,7 @@ static struct rejit_thread_t *rejit_thread_reclaim(struct rejit_threadset_t *r)
     }
 
     if (t == r->running) {
-        // `groups` has not been modified since `release`.
-        rejit_list_append(t->_prev_before_reclaiming, t);
+        rejit_list_append(t->_prev_before_release, t);
     } else {
         // `r->running` has already been reclaimed.
         memcpy(t->groups, r->running->groups, sizeof(int) * r->groups);
@@ -59,6 +59,7 @@ static struct rejit_thread_t *rejit_thread_reclaim(struct rejit_threadset_t *r)
 }
 
 
+// Spawn a copy of the initial thread, pointing at the regexp's entry point.
 static struct rejit_thread_t *rejit_thread_entry(struct rejit_threadset_t *r)
 {
     struct rejit_thread_t *t = rejit_thread_acquire(r);
@@ -137,17 +138,17 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r)
     size_t queue = r->active_queue;
 
     while (1) {
-        struct rejit_thread_ref_t *t = r->queues[queue].first;
+        struct rejit_thread_t *t = r->queues[queue].first;
 
         while (t != rejit_list_end(&r->queues[queue])) {
-            r->running = t->ref;
+            r->running = RE2JIT_DEREF_THREAD(t);
 
-            rejit_thread_release(r, r->running);
+            rejit_thread_release(r, RE2JIT_DEREF_THREAD(t));
 
             #if RE2JIT_VM
                 return 1;
             #else
-                r->running->entry(r);
+                RE2JIT_DEREF_THREAD(t)->entry(r);
             #endif
 
             t = r->queues[queue].first;

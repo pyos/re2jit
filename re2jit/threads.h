@@ -19,6 +19,7 @@ extern "C" {
      * group N begin/end?". The regex did not match iff none of the threads matched.
      *
      */
+    #include <stddef.h>
     #include <stdlib.h>
     #include <stdint.h>
 
@@ -29,7 +30,6 @@ extern "C" {
     #define BIT_SHIFT(x, i) ((i) % (sizeof((x)[0]) * 8))
     #define BIT_GET(x, i) ((x)[BIT_INDEX(x, i)] & (1LL << BIT_SHIFT(x, i)))
     #define BIT_SET(x, i) ((x)[BIT_INDEX(x, i)] |= 1LL << BIT_SHIFT(x, i))
-
 
     /* Maximum number of bytes a thread can consume per one opcode.
      * Normally, re2 only emits opcodes that match a single byte. I got this sweet
@@ -76,34 +76,28 @@ extern "C" {
     #endif
 
 
-    struct rejit_thread_ref_t
-    {
-        RE2JIT_LIST_LINK(struct rejit_thread_t);
-        /* `thread_t` has to be a part of two lists at once, but only one
-         * `LIST_LINK` can be at the beginning of the struct.
-         * Thus, this little wrapper. */
-        struct rejit_thread_t *ref;
-    };
-
-
     struct rejit_thread_t
     {
         /* Doubly-linked list of all threads, ordered by descending priority.
-         * When a thread forks off, it inherits priority from its parent,
-         * decreased by an arbitrarily small value. In other words, a new thread
-         * is always inserted exactly after its parent. If multiple threads match,
-         * the one with the highest priority provides the group-to-index mapping. */
+         * When a thread forks off, it is inserted directly after its parent. */
         RE2JIT_LIST_LINK(struct rejit_thread_t);
-        struct rejit_thread_t *_prev_before_reclaiming;
+        /* When a thread is released, its position in the list is lost.
+         * We may need to restore a previously released thread, though. */
+        struct rejit_thread_t *_prev_before_release;
         /* Doubly-linked list of all threads in a single queue.
          * Queues are rotated in and out as the input string pointer advances;
          * see `thread_dispatch`. */
-        struct rejit_thread_ref_t category;
+        RE2JIT_LIST_LINK(struct rejit_thread_ref_t) category;
+        /* Since list links point to each other, not to actual objects that contain them,
+         * and this reference is not at the beginning of `struct rejit_thread_t`,
+         * we'll have to do some pointer arithmetic. */
+        #define RE2JIT_DEREF_THREAD(ref) ((struct rejit_thread_t *)(((char *)(ref)) - offsetof(struct rejit_thread_t, category)))
         /* Pointer to the beginning of the thread's code. */
         rejit_entry_t entry;
         /* VLA mapping of group indices to indices into the input string.
          * Subgroup N matched the substring indexed by [groups[2N]:groups[2N+1]).
-         * Subgroup 0 is special -- it is the whole match. */
+         * Subgroup 0 is special -- it is the whole match. Unmatched subgroups
+         * have at least one boundary set to -1. */
         int groups[0];
     };
 
@@ -114,12 +108,14 @@ extern "C" {
         size_t offset;
         size_t length;
         size_t states;
-        /* Bit vector used to mark visited states when handling each character.
-         * (Used to avoid infinite loops when following empty arrows.) */
+        /* A vector of bits, one for each state, marking whether that state was already
+         * visited while handling this input character. Used to avoid infinite
+         * loops consisting purely of empty transitions. */
         uint8_t *visited;
         /* Entry point of the initial thread. */
         rejit_entry_t entry;
-        /* Actual length of `thread_t.groups`. Must be at least 2. */
+        /* Actual length of `thread_t.groups`. Must be at least 2 to store
+         * the location of the whole match, + 2 for each subgroup if needed. */
         size_t groups;
         /* Ring buffer of thread queues. The threads in the active queue are ready to
          * run; the rest are waiting for the input pointer to advance. When the active
@@ -127,7 +123,8 @@ extern "C" {
          * an input byte and moving themselves to a different queue), the input string
          * is advanced one byte and the queue buffer is rotated one position. */
         size_t active_queue;
-        RE2JIT_LIST_ROOT(struct rejit_thread_ref_t) queues[RE2JIT_THREAD_LOOKAHEAD + 1];
+        // NOTE use RE2JIT_DEREF_THREAD on objects from these lists to get valid pointers.
+        RE2JIT_LIST_ROOT(struct rejit_thread_t) queues[RE2JIT_THREAD_LOOKAHEAD + 1];
         /* Doubly-linked list of threads ordered by descending priority. Again.
          * There is no match iff this becomes empty at some point, and there is a match
          * iff there is exactly one thread, and it is not in any of the queues. */
