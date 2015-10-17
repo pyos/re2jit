@@ -1,6 +1,13 @@
 CXX      ?= g++
 CXXFLAGS ?= -O3 -Wall -Wextra -Werror
 
+ifdef FORCE_VM
+CXXFLAGS += -DRE2JIT_VM
+endif
+
+ifdef ENABLE_DEBUG
+CXXFLAGS += -DRE2JIT_DEBUG
+endif
 
 _require_vendor = \
 	re2/obj/libre2.a
