@@ -79,11 +79,15 @@ struct _x64_native
 // not r32
 #define NOTL_EAX() INSCODE(0xF7, 0xD0)
 
-// test imm32, r32
+// test r32/imm32, r32
 #define TEST_IMM_EAX(p) INSCODE(0xA9, IMM32(p))
+#define TEST_EAX_EAX(p) INSCODE(0x85, 0xC0)
 
 // test imm8, m8=imm32(r64)
 #define TEST_IMMB_MRSI(imm, d) INSCODE(0xF6, 0x86, IMM32(d), IMM8(imm, 0))
+
+// xor r32, r32
+#define XORL_EAX_EAX() INSCODE(0x31, 0xC0)
 
 // or imm8, m8=imm32(r64)
 #define OR_IMMB_MRSI(imm, d) INSCODE(0x80, 0x8E, IMM32(d), IMM8(imm, 0))
@@ -122,6 +126,8 @@ struct _x64_native
 #define JMP_GE   0xD
 #define JMP_LE   0xE
 #define JMP_GT   0xF
+#define JMP_ZERO JMP_EQ
+#define JMP_NZ   JMP_NE
 
 #define JMP_OVER(type, body) do { \
     JMP_REL(type, 0L);            \
@@ -170,6 +176,7 @@ static inline void *_compile(re2::Prog *prog)
     std::vector< unsigned > is_jump_target(n);
     // If the program starts with a failing opcode, we can use that to redirect
     // all conditional rets instead of jumping over them.
+    XORL_EAX_EAX();
     RETQ();
 
     for (i = 0; i < n; i++) {
@@ -260,6 +267,8 @@ static inline void *_compile(re2::Prog *prog)
                 CALL_TBL(op->out());
                 POP_RSI();
                 POP_RDI();
+                // %eax == 1 if found a match in that branch, 0 otherwise
+                TEST_EAX_EAX(); RETQ_IF(JMP_NZ);
 
                 if ((size_t) op->out1() != i + 1) {
                     //    jmp  code+vtable[out1]
@@ -323,7 +332,7 @@ static inline void *_compile(re2::Prog *prog)
             case re2::kInstCapture:
                 //    cmp cap, (%rdi).groups
                 CMPL_IMM_MRDI(op->cap(), offsetof(struct rejit_threadset_t, groups));
-                //    jnb code+vtable[out]
+                //    jae code+vtable[out]
                 JMP_TBL(JMP_GE_U, op->out());
 
                 //    mov (%rdi).running, %rcx
@@ -348,7 +357,7 @@ static inline void *_compile(re2::Prog *prog)
                 //    test empty, %eax
                 TEST_IMM_EAX(op->empty());
                 //    ret [if non-zero]
-                RETQ_IF(JMP_NE);
+                RETQ_IF(JMP_NZ);
 
                 if ((size_t) op->out() != i + 1) {
                     //    jmp code+vtable[out]
@@ -367,7 +376,6 @@ static inline void *_compile(re2::Prog *prog)
             case re2::kInstMatch:
                 //    jmp rejit_thread_match
                 JMPL_IMM(&rejit_thread_match);
-                // TODO prevent kAltMatch from exploring out1 if that returns 1
                 break;
 
             case re2::kInstFail:
