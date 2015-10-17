@@ -52,6 +52,7 @@ struct _x64_native
 #define MOVB_MRDI_EAX(p) INSCODE(      0x8b, 0x47, IMM8(p, 0))
 #define MOVB_MRDI_RAX(p) INSCODE(0x48, 0x8b, 0x47, IMM8(p, 0))
 #define MOVB_MRDI_RCX(p) INSCODE(0x48, 0x8b, 0x4f, IMM8(p, 0))
+#define MOVB_MRDI_RSI(p) INSCODE(0x48, 0x8b, 0x77, IMM8(p, 0))
 #define MOVL_MRDI__CL(p) INSCODE(      0x8a, 0x8f, IMM32(p))
 #define MOVL_MRDI_EAX(p) INSCODE(      0x8b, 0x87, IMM32(p))
 #define MOVL_MRDI_RAX(p) INSCODE(0x48, 0x8b, 0x87, IMM32(p))
@@ -243,13 +244,14 @@ static inline void *_compile(re2::Prog *prog)
         if (!reachable[i]) continue;
 
         // In sysv abi, first 6 args are %rdi, %rsi, %rdx, %rcx, %r8, %r9. On entry
-        // into an opcode, %rdi points to the `rejit_threadset_t`, %rsi is a bit vector
-        // of states visited on this run through the queue, and the topmost value on
-        // the stack is the return address into `rejit_thread_dispatch`.
+        // into an opcode, %rdi points to the `rejit_threadset_t`, and the topmost value
+        // on the stack is the return address into `rejit_thread_dispatch`.
 
         #define _BYTE_ARRAY ((uint8_t *) 0)
         // kInstFail will do `ret` anyway.
         if (op->opcode() != re2::kInstFail && is_jump_target[i] > 1) {
+            //    mov (%rdi).states_visited, %rsi
+            MOVB_MRDI_RSI(offsetof(struct rejit_threadset_t, states_visited));
             //    test offset(i), %rsi[index(i)]
             TEST_IMMB_MRSI(1 << BIT_SHIFT(_BYTE_ARRAY, i), BIT_INDEX(_BYTE_ARRAY, i));
             //    ret [if non-zero]
@@ -262,10 +264,8 @@ static inline void *_compile(re2::Prog *prog)
         switch (op->opcode()) {
             case re2::kInstAlt:
                 PUSH_RDI();
-                PUSH_RSI();
                 //    call code+vtable[out]
                 CALL_TBL(op->out());
-                POP_RSI();
                 POP_RDI();
                 // %eax == 1 if found a match in that branch, 0 otherwise
                 TEST_EAX_EAX(); RETQ_IF(JMP_NZ);
@@ -339,8 +339,13 @@ static inline void *_compile(re2::Prog *prog)
                 MOVB_MRDI_RCX(offsetof(struct rejit_threadset_t, running));
                 //    mov (%rdi).offset, %rax
                 MOVB_MRDI_RAX(offsetof(struct rejit_threadset_t, offset));
+
                 //    mov %eax, (%rcx).groups[cap]
-                MOVL_EAX_MRCX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
+                if (op->cap() * sizeof(int) < 256 - offsetof(struct rejit_thread_t, groups)) {
+                    MOVB_EAX_MRCX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
+                } else {
+                    MOVL_EAX_MRCX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
+                }
 
                 if ((size_t) op->out() != i + 1) {
                     //    jmp code+vtable[out]
@@ -351,7 +356,7 @@ static inline void *_compile(re2::Prog *prog)
 
             case re2::kInstEmptyWidth:
                 //    mov (%rdi).empty, %eax
-                MOVL_MRDI_EAX(offsetof(struct rejit_threadset_t, empty));
+                MOVB_MRDI_EAX(offsetof(struct rejit_threadset_t, empty));
                 //    not %eax
                 NOTL_EAX();
                 //    test empty, %eax

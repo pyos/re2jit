@@ -138,7 +138,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps)
             rejit_thread_release(r, r->running);
 
             #if !RE2JIT_VM
-                r->running->entry(r, r->states_visited);
+                r->running->entry(r);
             #endif
 
             if (!--max_steps) {
