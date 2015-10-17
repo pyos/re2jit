@@ -1,17 +1,16 @@
+#include <deque>
 #include <vector>
 
 #include <stdint.h>
 #include <stddef.h>
 #include <sys/mman.h>
 
+#include "it.h"
 #include "debug.h"
 #include "threads.h"
 
 
-using re2jit::debug;
-
-
-struct _x64_native
+struct re2jit::native
 {
     void *code;
     void *entry;
@@ -157,10 +156,9 @@ struct _x64_native
   || ((code[(i) - 1] & 0xF0) == 0x80 && code[(i) - 2] == 0x0F) /* conditional jump */)
 
 
-static inline void *_compile(re2::Prog *prog)
+static inline re2jit::native *_compile(re2::Prog *prog)
 {
-    debug::write("re2jit::it: target = x86_64 System V ABI\n");
-    struct _x64_native *storage = new _x64_native{};
+    re2jit::native *storage = new re2jit::native{};
 
     size_t i;
     size_t n = prog->size();
@@ -281,7 +279,7 @@ static inline void *_compile(re2::Prog *prog)
 
             case re2::kInstAltMatch:
                 // TODO find out what exactly this opcode is
-                debug::write("re2jit::it: unsupported opcode kInstAltMatch\n");
+                re2jit::debug::write("re2jit::x64: unsupported opcode kInstAltMatch\n");
                 return storage;
 
             case re2::kInstByteRange:
@@ -395,7 +393,7 @@ static inline void *_compile(re2::Prog *prog)
                 break;
 
             default:
-                debug::write("re2jit::it: unknown opcode %d\n", op->opcode());
+                re2jit::debug::write("re2jit::x64: unknown opcode %d\n", op->opcode());
                 return storage;
         }
     }
@@ -442,25 +440,21 @@ static inline void *_compile(re2::Prog *prog)
 }
 
 
-static inline void _destroy(void *st)
+static inline void _destroy(re2jit::native *storage)
 {
-    struct _x64_native *storage = (struct _x64_native *) st;
-
     munmap(storage->code, storage->size);
     delete storage;
 }
 
 
-static inline rejit_entry_t _entry(void *st)
+static inline rejit_entry_t _entry(re2jit::native *storage)
 {
-    return (rejit_entry_t) ((struct _x64_native *) st)->entry;
+    return (rejit_entry_t) storage->entry;
 }
 
 
-static inline bool _run(void *st, struct rejit_threadset_t *nfa)
+static inline bool _run(re2jit::native *storage, struct rejit_threadset_t *nfa)
 {
-    struct _x64_native *storage = (struct _x64_native *) st;
-
     if (!storage->code) {
         return 0;
     }

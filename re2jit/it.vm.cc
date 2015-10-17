@@ -1,31 +1,33 @@
+#include "it.h"
 #include "debug.h"
 #include "threads.h"
 
-using re2jit::debug;
 
-
-static inline void *_compile(re2::Prog *prog)
+struct re2jit::native
 {
-    debug::write("re2jit::it: target = NFA interpreter\n");
-    return prog;
+    re2::Prog prog;
+};
+
+
+static inline re2jit::native *_compile(re2::Prog *prog)
+{
+    return (re2jit::native *) prog;
 }
 
 
-static inline void _destroy(void *)
+static inline void _destroy(re2jit::native *)
 {
 }
 
 
-static inline rejit_entry_t _entry(void *prog)
+static inline rejit_entry_t _entry(re2jit::native *native)
 {
-    // When in VM mode, entry points are bytecode offsets.
-    return (rejit_entry_t) ((re2::Prog *) prog)->start();
+    return native->prog.start();
 }
 
 
-static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
+static inline bool _run(re2jit::native *native, struct rejit_threadset_t *nfa)
 {
-    re2::Prog *_prog = (re2::Prog *) prog;
     re2::Prog::Inst *op;
     ssize_t stack[256];
     ssize_t stkid = 0;
@@ -42,7 +44,7 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
             }
 
             BIT_SET(nfa->states_visited, stack[stkid]);
-            op = _prog->inst(stack[stkid]);
+            op = native->prog.inst(stack[stkid]);
 
             switch (op->opcode()) {
                 case re2::kInstAlt:
@@ -51,7 +53,7 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
                     break;
 
                 case re2::kInstAltMatch:
-                    debug::write("re2jit::it: can't interpret kInstAltMatch\n");
+                    re2jit::debug::write("re2jit::vm: can't interpret kInstAltMatch\n");
                     return 0;
 
                 case re2::kInstByteRange: {
@@ -103,7 +105,7 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
                     break;
 
                 default:
-                    debug::write("re2jit::it: unknown opcode %d\n", op->opcode());
+                    re2jit::debug::write("re2jit::vm: unknown opcode %d\n", op->opcode());
                     return 0;
             }
         }

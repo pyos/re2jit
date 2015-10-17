@@ -7,13 +7,7 @@
 
 namespace re2jit
 {
-    enum status
-    {
-        FAILED = -1,
-        REJECT = 0,
-        ACCEPT = 1,
-    };
-
+    struct native;
 
     struct it : public RE2
     {
@@ -21,16 +15,13 @@ namespace re2jit
         it(const re2::StringPiece&, const RE2::Options&);
        ~it();
 
-        status match(const re2::StringPiece& text, RE2::Anchor anchor = RE2::ANCHOR_START,
-                           re2::StringPiece *match = NULL, int nmatch = 0) const;
-
-        status run_nfa(const re2::StringPiece& text, RE2::Anchor anchor = RE2::ANCHOR_START,
-                             re2::StringPiece *match = NULL, int nmatch = 0) const;
+        bool match(const re2::StringPiece& text, RE2::Anchor anchor = RE2::ANCHOR_START,
+                         re2::StringPiece *match = NULL, int nmatch = 0) const;
 
         protected:
+            native      *_native;
             re2::Regexp *_regex;
             re2::Prog   *_prog;
-            void *_platform;
     };
 };
 
