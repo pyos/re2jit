@@ -5,7 +5,7 @@ using re2jit::debug;
 
 static inline void *_compile(re2::Prog *prog)
 {
-    debug::write("re2jit::it: vm mode\n");
+    debug::write("re2jit::it: target = NFA interpreter\n");
     return prog;
 }
 
