@@ -54,3 +54,13 @@ to be, and it fails horribly if you try to write something equivalent to Python'
 All because Python reads the next character and looks at its class in the Unicode database,
 while re2 happily unwraps `[\p{L}\p{N}_]` into `[list of all letters and digits in Unicode]`.
 Ugh.)
+
+### Supported platforms
+
+ * x86-64 on \*nix (System V calling convention **required**)
+ * Everything else - only through an interpreter, which is a slightly slower version of re2's
+   NFA. So don't use it.
+
+### In fact,
+
+don't use this thing either way.
