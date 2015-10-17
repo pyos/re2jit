@@ -50,13 +50,6 @@ extern "C" {
     };
 
 
-    enum RE2JIT_THREAD_FLAGS {
-        /* If `thread_free` is called in the middle of `thread_dispatch`, this flag
-         * is set. It means that the a thread has encountered an invalid instruction. */
-        RE2JIT_THREAD_FAILED = 0x4,
-    };
-
-
     enum RE2JIT_EMPTY_FLAGS {  // has to match its re2 counterpart.
         RE2JIT_EMPTY_BEGIN_LINE        = 0x01,  // ^ - beginning of line
         RE2JIT_EMPTY_END_LINE          = 0x02,  // $ - end of line
@@ -152,7 +145,7 @@ extern "C" {
      * prior to calling this. */
     void rejit_thread_init(struct rejit_threadset_t *);
 
-    /* Deallocate all threads and reset the NFA to a failed state. */
+    /* Deallocate all threads. */
     void rejit_thread_free(struct rejit_threadset_t *);
 
     /* While there's a thread on the active queue, pop it off and jump to its entry

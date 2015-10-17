@@ -115,9 +115,6 @@ void rejit_thread_free(struct rejit_threadset_t *r)
         }                             \
     } while (0)
 
-    r->flags |= RE2JIT_THREAD_FAILED;
-    r->input = NULL;
-    r->length = 0;  // force `thread_dispatch` to stop
     FREE_LIST(r->free, NULL);
     FREE_LIST(r->all_threads.first, rejit_list_end(&r->all_threads));
     free(r->states_visited);
@@ -227,10 +224,6 @@ int rejit_thread_wait(struct rejit_threadset_t *r, rejit_entry_t entry, size_t s
 
 int rejit_thread_result(struct rejit_threadset_t *r, int **groups)
 {
-    if (r->flags & RE2JIT_THREAD_FAILED) {
-        return 0;
-    }
-
     if (r->all_threads.first == rejit_list_end(&r->all_threads)) {
         return 0;
     }
