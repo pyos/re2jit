@@ -155,12 +155,12 @@ extern "C" {
     /* Deallocate all threads and reset the NFA to a failed state. */
     void rejit_thread_free(struct rejit_threadset_t *);
 
-    /* Pop a thread off the active queue and jump to its entry point, repeat at most
-     * `max_steps` times. If at some point no thread is active, advance the input one
-     * byte forward and rotate the queue ring. If no thread becomes active until the end
-     * of the input, return 0; `thread_result` can then be used to determine whether
-     * the regex matched. Otherwise, return 1. */
-    int rejit_thread_dispatch(struct rejit_threadset_t *, int max_steps);
+    /* While there's a thread on the active queue, pop it off and jump to its entry
+     * point. If at some point no thread is active, advance the input one byte
+     * forward and rotate the queue ring. When the end of the input is reached
+     * and no more threads are active, return 0. In VM mode, return 1 instead of
+     * jumping to the entry point. */
+    int rejit_thread_dispatch(struct rejit_threadset_t *);
 
     /* Claim that the currently running thread has matched the input string.
      * Returns 0 if it has actually failed, 1 otherwise. */

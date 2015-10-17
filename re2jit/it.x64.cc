@@ -4,6 +4,9 @@
 #include <stddef.h>
 #include <sys/mman.h>
 
+#include "debug.h"
+#include "threads.h"
+
 
 using re2jit::debug;
 
@@ -462,7 +465,6 @@ static inline bool _run(void *st, struct rejit_threadset_t *nfa)
         return 0;
     }
 
-    while (rejit_thread_dispatch(nfa, 4096)) { }
-
+    rejit_thread_dispatch(nfa);
     return 1;
 }

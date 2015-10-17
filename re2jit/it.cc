@@ -1,21 +1,19 @@
 #include <re2/prog.h>
 #include <re2/regexp.h>
 
+
+#if RE2JIT_VM
+    #include "it.vm.cc"
+#elif __x86_64__
+    #include "it.x64.cc"
+#else
+    #error "unsupported architecture, compile with FORCE_VM"
+#endif
+
+
 #include "it.h"
 #include "debug.h"
 #include "threads.h"
-
-
-#if RE2JIT_VM
-    #include "re2jit/it.vm.cc"
-#elif __x86_64__
-    #include "re2jit/it.x64.cc"
-#else
-    static inline void *        _compile (re2::Prog *) { return NULL; }
-    static inline void          _destroy (void *) {}
-    static inline rejit_entry_t _entry   (void *) { return NULL; }
-    static inline bool          _run     (void *, struct rejit_threadset_t *) { return 0; }
-#endif
 
 
 namespace re2jit

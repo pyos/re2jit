@@ -1,4 +1,5 @@
-#include <vector>
+#include "debug.h"
+#include "threads.h"
 
 using re2jit::debug;
 
@@ -30,7 +31,7 @@ static inline bool _run(void *prog, struct rejit_threadset_t *nfa)
     ssize_t stkid = 0;
     int *capture;
 
-    while (rejit_thread_dispatch(nfa, 1)) {
+    while (rejit_thread_dispatch(nfa)) {
         stkid = 0;
         stack[stkid++] = (ssize_t) nfa->running->entry;
         capture = nfa->running->groups;

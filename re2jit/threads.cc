@@ -125,7 +125,7 @@ void rejit_thread_free(struct rejit_threadset_t *r)
 }
 
 
-int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps)
+int rejit_thread_dispatch(struct rejit_threadset_t *r)
 {
     size_t queue = r->active_queue;
 
@@ -137,13 +137,11 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int max_steps)
 
             rejit_thread_release(r, r->running);
 
-            #if !RE2JIT_VM
+            #if RE2JIT_VM
+                return 1;
+            #else
                 r->running->entry(r);
             #endif
-
-            if (!--max_steps) {
-                return 1;
-            }
 
             t = r->queues[queue].first;
         }
