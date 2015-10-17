@@ -42,10 +42,11 @@ namespace re2jit
     bool it::match(const re2::StringPiece& text, RE2::Anchor anchor,
                          re2::StringPiece* match, int nmatch) const
     {
-        if (_bytecode->anchor_start() && _bytecode->anchor_end())
-            anchor = ANCHOR_BOTH;
-        else if (_bytecode->anchor_start() && anchor != ANCHOR_BOTH)
-            anchor = ANCHOR_START;
+        unsigned int flags = 0;
+        if (_bytecode->anchor_start() || anchor != RE2::UNANCHORED)
+            flags |= RE2JIT_ANCHOR_START;
+        if (_bytecode->anchor_end() || anchor == RE2::ANCHOR_BOTH)
+            flags |= RE2JIT_ANCHOR_END;
 
         struct rejit_threadset_t nfa;
         // A-a-a-and C++ is worse than C99.
@@ -54,9 +55,7 @@ namespace re2jit
         nfa.groups = nmatch ? 2 * nmatch : 2;
         nfa.states = _bytecode->size();
         nfa.entry  = _native->entry();
-        nfa.flags  = anchor == RE2::ANCHOR_START  ? RE2JIT_ANCHOR_START :
-                     anchor == RE2::ANCHOR_BOTH   ? RE2JIT_ANCHOR_START | RE2JIT_ANCHOR_END :
-                     0;
+        nfa.flags  = flags;
 
         if (!rejit_thread_init(&nfa)) {
             debug::write("re2jit::it: failed to initialize NFA\n");
