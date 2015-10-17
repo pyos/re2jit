@@ -42,6 +42,11 @@ namespace re2jit
     bool it::match(const re2::StringPiece& text, RE2::Anchor anchor,
                          re2::StringPiece* match, int nmatch) const
     {
+        if (_bytecode->anchor_start() && _bytecode->anchor_end())
+            anchor = ANCHOR_BOTH;
+        else if (_bytecode->anchor_start() && anchor != ANCHOR_BOTH)
+            anchor = ANCHOR_START;
+
         struct rejit_threadset_t nfa;
         // A-a-a-and C++ is worse than C99.
         nfa.input  = text.data();
