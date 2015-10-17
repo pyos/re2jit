@@ -23,17 +23,19 @@ namespace re2jit
     it::it(const re2::StringPiece& pattern) : it(pattern, RE2::Quiet) {}
     it::it(const re2::StringPiece& pattern, const RE2::Options& options) : RE2(pattern, options)
     {
-        if (RE2::ok()
-            && (_regex = RE2::Regexp())
-            && (_prog  = _regex->CompileToProg(RE2::options().max_mem())))
-               _native = _compile(_prog);
+        if (RE2::ok()) {
+            // May fail, but highly unlikely -- `RE2::Init` already compiled it.
+            _bytecode = RE2::Regexp()->CompileToProg(RE2::options().max_mem());
+            // Not like anything can be done if it fails anyway -- `error_` is private.
+            _native = new native{_bytecode};
+        }
     }
 
 
     it::~it()
     {
-        _destroy(_native);
-        delete _prog;
+        delete _native;
+        delete _bytecode;
     }
 
 
@@ -45,32 +47,39 @@ namespace re2jit
         nfa.input  = text.data();
         nfa.length = text.size();
         nfa.groups = nmatch ? 2 * nmatch : 2;
-        nfa.states = _prog->size();
-        nfa.entry  = _entry(_native);
+        nfa.states = _bytecode->size();
+        nfa.entry  = _native->entry();
         nfa.flags  = anchor == RE2::ANCHOR_START  ? RE2JIT_ANCHOR_START :
                      anchor == RE2::ANCHOR_BOTH   ? RE2JIT_ANCHOR_START | RE2JIT_ANCHOR_END :
                      0;
 
-        rejit_thread_init(&nfa);
+        if (!rejit_thread_init(&nfa)) {
+            debug::write("re2jit::it: failed to initialize NFA\n");
+            goto fallback;
+        }
 
-        if (!_run(_native, &nfa)) {
+        if (!_native->run(&nfa)) {
             rejit_thread_free(&nfa);
-            debug::write("re2jit::it: falling back to re2\n");
-            return RE2::Match(text, 0, text.size(), anchor, match, nmatch);
+            goto fallback;
         }
 
-        int *gs = NULL, r = rejit_thread_result(&nfa, &gs);
+        {
+            int *gs = NULL, r = rejit_thread_result(&nfa, &gs);
 
-        if (gs != NULL) for (int i = 0; i < nmatch; i++, gs += 2) {
-            if (gs[0] == -1 || gs[1] == -1)
-                match[i].set((const char *) NULL, 0);
-            else
-                match[i].set(text.data() + gs[0], gs[1] - gs[0]);
+            if (gs != NULL) for (int i = 0; i < nmatch; i++, gs += 2) {
+                if (gs[0] == -1 || gs[1] == -1)
+                    match[i].set((const char *) NULL, 0);
+                else
+                    match[i].set(text.data() + gs[0], gs[1] - gs[0]);
+            }
+
+            debug::write("re2jit::it: finished with result %d\n", r);
+            rejit_thread_free(&nfa);
+            return r;
         }
 
-        rejit_thread_free(&nfa);
-
-        debug::write("re2jit::it: finished with result %d\n", r);
-        return r;
+    fallback:
+        debug::write("re2jit::it: falling back to re2\n");
+        return RE2::Match(text, 0, text.size(), anchor, match, nmatch);
     }
 };

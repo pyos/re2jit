@@ -10,14 +10,6 @@
 #include "threads.h"
 
 
-struct re2jit::native
-{
-    void *code;
-    void *entry;
-    size_t size;
-};
-
-
 // note down that `$+offset` should be linked to a vtable index.
 // see `_compile` for definition of `backrefs`, `vtable`, and `code`.
 #define INSBACK(index, offset) backrefs[index].push_back(code.size() + offset)
@@ -156,10 +148,39 @@ struct re2jit::native
   || ((code[(i) - 1] & 0xF0) == 0x80 && code[(i) - 2] == 0x0F) /* conditional jump */)
 
 
-static inline re2jit::native *_compile(re2::Prog *prog)
+struct re2jit::native
 {
-    re2jit::native *storage = new re2jit::native{};
+    void *_code;
+    void *_entry;
+    size_t _size;
 
+    native(re2::Prog *);
+   ~native()
+    {
+        if (_code) {
+            munmap(_code, _size);
+        }
+    };
+
+    rejit_entry_t entry() const
+    {
+        return (rejit_entry_t) _entry;
+    }
+
+    int run(struct rejit_threadset_t *nfa) const
+    {
+        if (!_code) {
+            return 0;
+        }
+
+        rejit_thread_dispatch(nfa);
+        return 1;
+    };
+};
+
+
+re2jit::native::native(re2::Prog *prog)
+{
     size_t i;
     size_t n = prog->size();
 
@@ -247,11 +268,11 @@ static inline re2jit::native *_compile(re2::Prog *prog)
         // into an opcode, %rdi points to the `rejit_threadset_t`, and the topmost value
         // on the stack is the return address into `rejit_thread_dispatch`.
 
-        #define _BYTE_ARRAY ((uint8_t *) 0)
+        #define _BYTE_ARRAY ((struct rejit_threadset_t *) 0)->visited
         // kInstFail will do `ret` anyway.
         if (op->opcode() != re2::kInstFail && is_jump_target[i] > 1) {
-            //    mov (%rdi).states_visited, %rsi
-            MOVB_MRDI_RSI(offsetof(struct rejit_threadset_t, states_visited));
+            //    mov (%rdi).visited, %rsi
+            MOVB_MRDI_RSI(offsetof(struct rejit_threadset_t, visited));
             //    test offset(i), %rsi[index(i)]
             TEST_IMMB_MRSI(1 << BIT_SHIFT(_BYTE_ARRAY, i), BIT_INDEX(_BYTE_ARRAY, i));
             //    ret [if non-zero]
@@ -280,7 +301,7 @@ static inline re2jit::native *_compile(re2::Prog *prog)
             case re2::kInstAltMatch:
                 // TODO find out what exactly this opcode is
                 re2jit::debug::write("re2jit::x64: unsupported opcode kInstAltMatch\n");
-                return storage;
+                return;
 
             case re2::kInstByteRange:
                 //    cmp $0, (%rdi).length
@@ -394,7 +415,7 @@ static inline re2jit::native *_compile(re2::Prog *prog)
 
             default:
                 re2jit::debug::write("re2jit::x64: unknown opcode %d\n", op->opcode());
-                return storage;
+                return;
         }
     }
 
@@ -403,7 +424,7 @@ static inline re2jit::native *_compile(re2::Prog *prog)
                                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
     if (target == (uint8_t *) -1) {
-        return storage;
+        return;
     }
 
     {
@@ -430,35 +451,10 @@ static inline re2jit::native *_compile(re2::Prog *prog)
 
     if (mprotect(target, code.size(), PROT_READ | PROT_EXEC) == -1) {
         munmap(target, code.size());
-        return storage;
+        return;
     }
 
-    storage->size  = code.size();
-    storage->code  = target;
-    storage->entry = target + vtable[prog->start()];
-    return storage;
-}
-
-
-static inline void _destroy(re2jit::native *storage)
-{
-    munmap(storage->code, storage->size);
-    delete storage;
-}
-
-
-static inline rejit_entry_t _entry(re2jit::native *storage)
-{
-    return (rejit_entry_t) storage->entry;
-}
-
-
-static inline bool _run(re2jit::native *storage, struct rejit_threadset_t *nfa)
-{
-    if (!storage->code) {
-        return 0;
-    }
-
-    rejit_thread_dispatch(nfa);
-    return 1;
+    _size  = code.size();
+    _code  = target;
+    _entry = target + vtable[prog->start()];
 }

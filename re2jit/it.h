@@ -19,9 +19,8 @@ namespace re2jit
                          re2::StringPiece *match = NULL, int nmatch = 0) const;
 
         protected:
-            native      *_native;
-            re2::Regexp *_regex;
-            re2::Prog   *_prog;
+            native    *_native;
+            re2::Prog *_bytecode;
     };
 };
 
