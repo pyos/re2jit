@@ -21,39 +21,25 @@
 // mov imm32/64, r64
 #define MOVL_IMM_RAX(p) INSCODE(0x48, 0xC7, 0xC0, IMM32(p))
 #define MOVL_IMM_RDX(p) INSCODE(0x48, 0xC7, 0xC2, IMM32(p))
-#define MOVL_IMM_RSI(p) INSCODE(0x48, 0xC7, 0xC6, IMM32(p))
-#define MOVQ_IMM_RAX(p) INSCODE(0x48, 0xB8, IMM64(p))
-#define MOVQ_IMM_RCX(p) INSCODE(0x48, 0xB9, IMM64(p))
-#define MOVQ_IMM_RDX(p) INSCODE(0x48, 0xBA, IMM64(p))
 #define MOVQ_IMM_RSI(p) INSCODE(0x48, 0xBE, IMM64(p))
-#define MOVQ_TBL_RAX(p) INSBACK(p, 2); MOVQ_IMM_RAX(0ULL)
 #define MOVQ_TBL_RSI(p) INSBACK(p, 2); MOVQ_IMM_RSI(0ULL)
 
 
 // mov m64=8/32(r64), r8/32/64
 #define MOV__MRAX__CL()  INSCODE(      0x8a, 0x08)
-#define MOVB_MRDI__CL(p) INSCODE(      0x8a, 0x4f, IMM8(p, 0))
 #define MOVB_MRDI_EAX(p) INSCODE(      0x8b, 0x47, IMM8(p, 0))
 #define MOVB_MRDI_RAX(p) INSCODE(0x48, 0x8b, 0x47, IMM8(p, 0))
 #define MOVB_MRDI_RCX(p) INSCODE(0x48, 0x8b, 0x4f, IMM8(p, 0))
 #define MOVB_MRDI_RSI(p) INSCODE(0x48, 0x8b, 0x77, IMM8(p, 0))
-#define MOVL_MRDI__CL(p) INSCODE(      0x8a, 0x8f, IMM32(p))
-#define MOVL_MRDI_EAX(p) INSCODE(      0x8b, 0x87, IMM32(p))
-#define MOVL_MRDI_RAX(p) INSCODE(0x48, 0x8b, 0x87, IMM32(p))
-#define MOVL_MRDI_RCX(p) INSCODE(0x48, 0x8b, 0x8f, IMM32(p))
 
 
 // mov r32/64, m64=imm8/32(r64)
-#define MOVB_RAX_MRCX(p) INSCODE(0x48, 0x89, 0x41, IMM8(p, 0))
 #define MOVB_EAX_MRCX(p) INSCODE(      0x89, 0x41, IMM8(p, 0))
-#define MOVL_RAX_MRCX(p) INSCODE(0x48, 0x89, 0x81, IMM32(p))
 #define MOVL_EAX_MRCX(p) INSCODE(      0x89, 0x81, IMM32(p))
 
 
 // cmp imm8/32, r8/64
 #define CMPB_IMM__CL(p) INSCODE(      0x80, 0xF9, IMM8(p, 0))
-#define CMPB_IMM_RCX(p) INSCODE(0x48, 0x83, 0xF9, IMM8(p, 0))
-#define CMPL_IMM_RCX(p) INSCODE(0x48, 0x81, 0xF9, IMM32(p))
 
 
 // cmp imm8/32, m64=imm8(r64)
@@ -81,9 +67,7 @@
 #define ORB_IMM_MRSI(imm, d) INSCODE(0x80, 0x8E, IMM32(d), IMM8(imm, 0))
 
 // stack r64
-#define PUSH_RSI() INSCODE(0x56)
 #define PUSH_RDI() INSCODE(0x57)
-#define POP_RSI()  INSCODE(0x5E)
 #define POP_RDI()  INSCODE(0x5F)
 
 // call imm32, relative near
@@ -97,7 +81,7 @@
 // jump imm32, relative near
 #define JMP_UNCOND_REL(p) INSCODE(0xE9, IMM32(p))  // rel. to next opcode
 #define JMP_UNCOND_TBL(k) INSBACK(k, 1); JMP_UNCOND_REL(0L)  // abs. to vtable entry
-#define JMP_UNCOND_ABS(p) JMP_UNCOND_ABS(p - code.size() - 5)  // rel. to code start
+#define JMP_UNCOND_ABS(p) JMP_UNCOND_REL(p - code.size() - 5)  // rel. to code start
 #define RETQ() INSCODE(0xC3)
 
 // jump imm32, conditional relative near

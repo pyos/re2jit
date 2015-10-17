@@ -124,11 +124,9 @@ struct re2jit::native
 
             switch (op->opcode()) {
                 case re2::kInstAlt:
-                    PUSH_RDI();
                     //    call code+vtable[out]
-                    CALL_TBL(op->out());
-                    POP_RDI();
-                    // %eax == 1 if found a match in that branch, 0 otherwise
+                    PUSH_RDI(); CALL_TBL(op->out()); POP_RDI();
+                    //    test %eax, %eax -- non-zero if found a match
                     TEST_EAX_EAX(); RETQ_IF(JMP_NZ);
 
                     if ((size_t) op->out1() != i + 1) {
