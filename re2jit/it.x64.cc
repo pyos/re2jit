@@ -128,7 +128,9 @@ struct re2jit::native
                     //    call code+vtable[out]
                     PUSH_RDI(); CALL_TBL(op->out()); POP_RDI();
                     //    test %eax, %eax -- non-zero if found a match
-                    TEST_EAX_EAX(); RETQ_IF(JMP_NZ);
+                    TEST_EAX_EAX();
+                    //    jnz -> ret, skipping over `xor %eax, %eax`
+                    JMP_ABS(JMP_NZ, 2L);
 
                     if ((size_t) op->out1() != i + 1) {
                         //    jmp  code+vtable[out1]
