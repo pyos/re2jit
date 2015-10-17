@@ -156,7 +156,7 @@ struct re2jit::native
                         //    cmp $'A', %cl
                         CMPB_IMM__CL('A');
                         //    jb skip
-                        JMP_OVER(JMP_LE_U, {
+                        JMP_OVER(JMP_LT_U, {
                             //    cmp $'Z', %cl
                             CMPB_IMM__CL('Z');
                             //    ja  skip
