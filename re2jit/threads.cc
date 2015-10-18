@@ -220,8 +220,6 @@ int rejit_thread_match(struct rejit_threadset_t *r)
         rejit_thread_release(r, t->next);
     }
 
-    // Remove this thread from the queue, but leave it in the list of all threads.
-    rejit_list_remove(&t->category);
     return 1;
 }
 
