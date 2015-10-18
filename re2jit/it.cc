@@ -1,3 +1,5 @@
+#include <map>
+
 #include <re2/prog.h>
 #include <re2/regexp.h>
 
@@ -90,5 +92,25 @@ namespace re2jit
         #endif
 
         return RE2::Match(text, 0, text.size(), anchor, match, nmatch);
+    }
+
+
+    const char *it::lastgroup(const re2::StringPiece *match, int nmatch) const
+    {
+        const std::map<int, std::string> &names = RE2::CapturingGroupNames();
+        const char *end = NULL;
+
+        int best = 0;
+        // group 0 is whole match; we don't need that
+        for (int i = 1; i < nmatch; i++) {
+            if (match[i].data() == NULL || match[i].data() < end)
+                continue;
+
+            end = match->data() + match->size();
+            best = i;
+        }
+
+        const auto it = names.find(best);
+        return it == names.cend() ? NULL : it->second.c_str();
     }
 };
