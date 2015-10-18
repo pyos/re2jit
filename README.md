@@ -61,7 +61,7 @@ Ugh.)
  * Everything else - only through an interpreter, which is a slightly slower version of re2's
    NFA. At least, most of the time it *is* slightly slower. Sometimes it is a lot faster
    for some reason, which is pretty weird. (For an example see
-   [tests/long.cc](https://github.com/pyos/re2jit/blob/master/test/long.cc#L36).)
+   [test/30-long.cc](https://github.com/pyos/re2jit/blob/master/test/30-long.cc#L7).)
    Point is, don't use it.
 
 ### In fact,
