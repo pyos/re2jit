@@ -103,9 +103,21 @@
       , re2jit::it r(regex);                               \
         re2::StringPiece m[ngroups];                       \
       , r.match(_input, RE2::anchor, m, ngroups)           \
-      , {});
+      , {})
 
 
-#define GROUP_PERF_TEST(name, n, regex, anchor, _input, ngroups) \
-    GENERIC_GROUP_TEST(name, regex, anchor, _input, ngroups, {}); \
-    PERF_TEST(name, n, regex, anchor, _input, ngroups);
+#ifdef RE2JIT_DO_PERF_TESTS
+
+#define GROUP_PERF_TEST(name, n, regex, anchor, input, ngroups) \
+    GENERIC_GROUP_TEST(name, regex, anchor, input, ngroups, {}); \
+    PERF_TEST(name, n, regex, anchor, input, ngroups)
+
+#else
+
+#define GROUP_PERF_TEST(name, n, regex, anchor, input, ngroups) \
+    GENERIC_GROUP_TEST(name, regex, anchor, input, ngroups, {})
+
+#endif
+
+#define GROUP_PERF_TEST_EX(n, regex, anchor, input, ngroups) \
+    GROUP_PERF_TEST(FORMAT_NAME(regex, anchor, input), n, regex, anchor, input, ngroups)

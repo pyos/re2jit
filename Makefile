@@ -51,7 +51,8 @@ _require_test_run = \
 	test/12-branching \
 	test/13-exponential \
 	test/20-submatching \
-	test/30-long
+	test/30-long \
+	test/31-unicode
 
 
 ARCHIVE = ar rcs
