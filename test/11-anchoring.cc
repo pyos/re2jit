@@ -12,3 +12,18 @@ MATCH_TEST("x", ANCHOR_BOTH, "x");
 MATCH_TEST("x", ANCHOR_BOTH, "xyz");
 MATCH_TEST("x", ANCHOR_BOTH, "uvwx");
 MATCH_TEST("x", ANCHOR_BOTH, "uvwxyz");
+
+MATCH_TEST("^x", UNANCHORED, "x");
+MATCH_TEST("^x", UNANCHORED, "xyz");
+MATCH_TEST("^x", UNANCHORED, "uvwx");
+MATCH_TEST("^x", UNANCHORED, "uvwxyz");
+
+MATCH_TEST("x$", UNANCHORED, "x");
+MATCH_TEST("x$", UNANCHORED, "xyz");
+MATCH_TEST("x$", UNANCHORED, "uvwx");
+MATCH_TEST("x$", UNANCHORED, "uvwxyz");
+
+MATCH_TEST("^x$", UNANCHORED, "x");
+MATCH_TEST("^x$", UNANCHORED, "xyz");
+MATCH_TEST("^x$", UNANCHORED, "uvwx");
+MATCH_TEST("^x$", UNANCHORED, "uvwxyz");
