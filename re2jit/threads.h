@@ -78,7 +78,7 @@ extern "C" {
         /* Doubly-linked list of all threads in a single queue.
          * Queues are rotated in and out as the input string pointer advances;
          * see `thread_dispatch`. */
-        RE2JIT_LIST_LINK(struct rejit_thread_ref_t) category;
+        RE2JIT_LIST_LINK(struct rejit_thread_t) category;
         /* Since list links point to each other, not to actual objects that contain them,
          * and this reference is not at the beginning of `struct rejit_thread_t`,
          * we'll have to do some pointer arithmetic. */
