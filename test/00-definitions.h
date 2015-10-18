@@ -42,22 +42,22 @@
     }
 
 
-#define GENERIC_GROUP_TEST(name, regex, anchor, input, ngroups, __xs) \
-    GENERIC_TEST(name, regex, anchor, input, ngroups, {               \
-        for (size_t i = 0; i < ngroups; i++) {                        \
-            const auto &g2 = r2groups[i];                             \
-            const auto &gj = rjgroups[i];                             \
-            if (g2 != gj) {                                           \
-                return Result::Fail(                                  \
-                    "group %zu incorrect\n"                           \
-                    "    expected [%d] '%.*s'\n"                      \
-                    "    matched  [%d] '%.*s'", i,                    \
-                    g2.size(), std::min(g2.size(), 50), g2.data(),    \
-                    gj.size(), std::min(gj.size(), 50), gj.data());   \
-            }                                                         \
-        }                                                             \
-                                                                      \
-        __xs;                                                         \
+#define GENERIC_GROUP_TEST(name, regex, anchor, _input, ngroups, __xs)           \
+    GENERIC_TEST(name, regex, anchor, _input, ngroups, {                         \
+        for (size_t i = 0; i < ngroups; i++) {                                   \
+            const auto &g2 = r2groups[i];                                        \
+            const auto &gj = rjgroups[i];                                        \
+            if (g2 != gj) {                                                      \
+                return Result::Fail(                                             \
+                    "group %zu incorrect\n"                                      \
+                    "    expected [%d @ %p] '%.*s'\n"                            \
+                    "    matched  [%d @ %p] '%.*s'", i,                          \
+                    g2.size(), g2.data(), std::min(g2.size(), 50), g2.data(),    \
+                    gj.size(), gj.data(), std::min(gj.size(), 50), gj.data());   \
+            }                                                                    \
+        }                                                                        \
+                                                                                 \
+        __xs;                                                                    \
     })
 
 
