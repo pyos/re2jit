@@ -1,16 +1,22 @@
 CXX      ?= g++
 CXXFLAGS ?= -O3 -Wall -Wextra -Werror
 
-ifdef FORCE_VM
+ENABLE_FALLBACK ?= 1
+
+ifeq ($(FORCE_VM),1)
 CXXFLAGS += -DRE2JIT_VM
 endif
 
-ifdef ENABLE_DEBUG
+ifeq ($(ENABLE_DEBUG),1)
 CXXFLAGS += -DRE2JIT_DEBUG
 endif
 
-ifdef DISABLE_FALLBACK
+ifneq ($(ENABLE_FALLBACK),1)
 CXXFLAGS += -DRE2JIT_NO_FALLBACK
+endif
+
+ifeq ($(ENABLE_PERF_TESTS),1)
+CXXFLAGS += -DRE2JIT_DO_PERF_TESTS
 endif
 
 _require_vendor = \
@@ -40,8 +46,12 @@ _require_library = \
 
 
 _require_test_run = \
-	test/basic \
-	test/groups
+	test/10-literal \
+	test/11-anchoring \
+	test/12-branching \
+	test/13-exponential \
+	test/20-submatching \
+	test/30-long
 
 
 ARCHIVE = ar rcs
@@ -95,4 +105,4 @@ obj/%.o: re2jit/%.cc $(_require_headers)
 
 obj/test/%: test/%.cc test/%.h test/framework.cc $(_require_library) $(_require_vendor)
 	@mkdir -p $(dir $@)
-	$(COMPILE) -DTEST=$< -DTESTH=$(basename $<).h -pthread -o $@ test/framework.cc `$(CCFLAGS) $(basename $<).h`
+	$(COMPILE) -DTEST=$< -DTESTH=$(basename $<).h -pthread -o $@ test/framework.cc `$(CCFLAGS) $(basename $<).h` -lre2jit -lre2

@@ -1,0 +1,2 @@
+MATCH_TEST("x", ANCHOR_START, "x");
+MATCH_TEST("x", ANCHOR_START, "y");
