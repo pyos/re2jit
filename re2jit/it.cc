@@ -37,8 +37,10 @@ namespace re2jit
 
     it::~it()
     {
-        delete _native;
-        delete _bytecode;
+        if (RE2::ok()) {
+            delete _native;
+            delete _bytecode;
+        }
     }
 
 
