@@ -32,22 +32,25 @@
 
             char *dst = NULL;
 
-            #define REWRITE(ch, new_src)                                     \
-                do {                                                         \
-                    if (dst == NULL)                                         \
-                        dst = allocate(regexp) + (src - 1 - regexp.data());  \
-                                                                             \
-                    int len = rejit_write_utf8((uint8_t *) dst, ch);         \
-                    dst += len - 1;                                          \
-                    _storage.len -= new_src - src - len + 1;                 \
-                    memcpy(dst + 1, (src = new_src) + 1, end - new_src - 1); \
-                } while (0)
-
             for (; src != end; src++) {
                 if (*src == '\\') {
                     if (++src == end)
                         // unexpected EOF after escape character
                         return regexp;
+
+                    if (dst) dst++;
+
+                    #define REWRITE(ch, new_src)                                     \
+                        do {                                                         \
+                            if (dst == NULL)                                         \
+                                dst = allocate(regexp) + (src - regexp.data());      \
+                                                                                     \
+                            dst -= 1;                                                \
+                            int len = rejit_write_utf8((uint8_t *) dst, ch);         \
+                            dst += len - 1;                                          \
+                            _storage.len -= new_src - src - len + 2;                 \
+                            memcpy(dst + 1, (src = new_src) + 1, end - new_src - 1); \
+                        } while (0)
 
                     switch (*src)
                     {
@@ -82,11 +85,9 @@
 
                             break;
                     }
-
-                    done: if (dst) dst++;  // skip over '\'
                 }
 
-                if (dst) dst++;
+                done: if (dst) dst++;
             }
 
             return dst ? re2::StringPiece{ _storage.buf, (int) _storage.len } : regexp;
