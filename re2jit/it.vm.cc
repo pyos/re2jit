@@ -1,6 +1,7 @@
 #include "it.h"
 #include "debug.h"
 #include "threads.h"
+#include "rewriter.h"
 #define STACK_SIZE 1024
 
 
@@ -41,6 +42,30 @@ struct re2jit::native
                 }
 
                 nfa->visited[i / 8] |= 1 << (i % 8);
+
+                #if !RE2JIT_NO_EXTCODES
+                    re2jit::fake_inst f{_prog, i};
+
+                    if (f) {
+                        if (f >= re2jit::MATCH_UNICODE_CLASS_START && f <= re2jit::MATCH_UNICODE_CLASS_END) {
+                            rejit_uni_char_t c;
+
+                            int len = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length, &c);
+                            if (len == -1)
+                                // not a valid utf-8 character
+                                continue;
+
+                            // TODO check the class of `c`
+                            rejit_thread_wait(nfa, f.out, len);
+                        }
+
+                        else {
+                            re2jit::debug::write("re2jit::vm: unsupported extcode %hu\n", f.op);
+                        }
+
+                        continue;
+                    }
+                #endif
 
                 op = _prog->inst(i);
 

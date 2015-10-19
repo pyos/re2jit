@@ -25,10 +25,14 @@ extern "C" {
 
     #include "list.h"
 
-    /* Maximum number of bytes a thread can consume per one opcode.
-     * Normally, re2 only emits opcodes that match a single byte. I got this sweet
-     * idea to "invent" some opcodes that can match whole UTF-8 characters, though... */
-    #define RE2JIT_THREAD_LOOKAHEAD 1
+    #if RE2JIT_NO_EXTCODES
+        /* Maximum number of bytes a thread can consume per one opcode.
+         * Normally, re2 only emits opcodes that match a single byte. I got this sweet
+         * idea to "invent" some opcodes that can match whole UTF-8 characters, though... */
+        #define RE2JIT_THREAD_LOOKAHEAD 1
+    #else
+        #define RE2JIT_THREAD_LOOKAHEAD 6
+    #endif
 
 
     enum RE2JIT_THREAD_ANCHOR {

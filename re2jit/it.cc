@@ -18,12 +18,13 @@
 #include "it.h"
 #include "debug.h"
 #include "threads.h"
+#include "rewriter.h"
 
 
 namespace re2jit
 {
     it::it(const re2::StringPiece& pattern) : it(pattern, RE2::Quiet) {}
-    it::it(const re2::StringPiece& pattern, const RE2::Options& options) : RE2(pattern, options)
+    it::it(const re2::StringPiece& pattern, const RE2::Options& options) : RE2(rewrite(pattern), options)
     {
         if (RE2::ok()) {
             // May fail, but highly unlikely -- `RE2::Init` already compiled it.
@@ -85,13 +86,13 @@ namespace re2jit
         }
 
     fallback:
-        debug::write("re2jit::it: falling back to re2\n");
-
-        #ifdef RE2JIT_NO_FALLBACK
+        #if RE2JIT_NO_FALLBACK || !RE2JIT_NO_EXTCODES
+            debug::write("re2jit:it: re2 fallback disabled\n");
             return 0;
+        #else
+            debug::write("re2jit::it: falling back to re2\n");
+            return RE2::Match(text, 0, text.size(), anchor, match, nmatch);
         #endif
-
-        return RE2::Match(text, 0, text.size(), anchor, match, nmatch);
     }
 
 

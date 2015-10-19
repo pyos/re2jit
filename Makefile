@@ -1,22 +1,27 @@
 CXX      ?= g++
 CXXFLAGS ?= -O3 -Wall -Wextra -Werror
 
-ENABLE_FALLBACK ?= 1
+ENABLE_FALLBACK    ?= 1
+ENABLE_NEW_OPCODES ?= 0
 
 ifeq ($(FORCE_VM),1)
-CXXFLAGS += -DRE2JIT_VM
+_options += -DRE2JIT_VM
 endif
 
 ifeq ($(ENABLE_DEBUG),1)
-CXXFLAGS += -DRE2JIT_DEBUG
+_options += -DRE2JIT_DEBUG
 endif
 
 ifneq ($(ENABLE_FALLBACK),1)
-CXXFLAGS += -DRE2JIT_NO_FALLBACK
+_options += -DRE2JIT_NO_FALLBACK
+endif
+
+ifneq ($(ENABLE_NEW_OPCODES),1)
+_options += -DRE2JIT_NO_EXTCODES
 endif
 
 ifeq ($(ENABLE_PERF_TESTS),1)
-CXXFLAGS += -DRE2JIT_DO_PERF_TESTS
+_options += -DRE2JIT_DO_PERF_TESTS
 endif
 
 _require_vendor = \
@@ -27,13 +32,15 @@ _require_headers = \
 	re2jit/it.h \
 	re2jit/list.h \
 	re2jit/debug.h \
-	re2jit/threads.h
+	re2jit/threads.h \
+	re2jit/rewriter.h
 
 
 _require_objects = \
 	obj/it.o \
 	obj/debug.o \
-	obj/threads.o
+	obj/threads.o \
+	obj/rewriter.o
 
 
 _require_platform_code = \
@@ -59,7 +66,7 @@ ARCHIVE = ar rcs
 INSTALL = install -D
 CCFLAGS = ./ccflags
 DYNLINK = $(CC) -shared -o
-COMPILE = $(CXX) $(CXXFLAGS) -std=c++11 -fPIC -I. -I./re2 -L./obj -L./re2/obj
+COMPILE = $(CXX) $(CXXFLAGS) $(_options) -std=c++11 -fPIC -I. -I./re2 -L./obj -L./re2/obj
 
 
 .PHONY: all clean test test/%
