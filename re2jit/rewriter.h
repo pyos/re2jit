@@ -7,7 +7,7 @@
 #include <re2/prog.h>
 #include <re2/stringpiece.h>
 
-#include <re2jit/unicode.h>
+#include "unicode.h"
 
 
 namespace re2jit
