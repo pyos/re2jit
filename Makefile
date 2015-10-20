@@ -2,7 +2,7 @@ CXX      ?= g++
 CXXFLAGS ?= -O3 -Wall -Wextra -Werror
 
 ENABLE_FALLBACK    ?= 1
-ENABLE_NEW_OPCODES ?= 0
+ENABLE_NEW_OPCODES ?= 1
 
 ifeq ($(FORCE_VM),1)
 _options += -DRE2JIT_VM
