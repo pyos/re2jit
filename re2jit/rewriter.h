@@ -12,17 +12,20 @@
 
 namespace re2jit
 {
-    struct opcode {
+    struct inst {
         #define _opcode(n, v) static constexpr const rejit_bmp_char_t n = SURROGATE_L + v;
         _opcode(kUnicodeLetter, 0);
         _opcode(kUnicodeNumber, 1);
         #undef _opcode
 
-        // One of the above constants. Note that fake instructions carry no arguments;
-        // these should be encoded in the opcode itself.
-        rejit_bmp_char_t opcode;
-        // ID of the next instruction in `re2::Prog` to evaluate.
-        ssize_t out;
+        inst(ssize_t opcode, ssize_t out) : opcode_(opcode), out_(out) {}
+
+        ssize_t opcode() const { return opcode_; }
+        ssize_t out() const { return out_; }
+
+        protected:
+            ssize_t opcode_;
+            ssize_t out_;
     };
 
 
@@ -35,7 +38,7 @@ namespace re2jit
          * @param prog: `re2::Prog *` to read instructions out of.
          * @param i: index of the current instruction.
          * @param ext: stmt to execute if the instruction is a re2jit extension
-         *             (type of `var` is `re2jit::opcode`).
+         *             (type of `var` is `re2jit::inst *`).
          * @param normal: stmt to execute if the instruction is a re2 opcode
          *                (type of `var` is `re2::Prog::Inst *`).
          *
@@ -117,11 +120,11 @@ namespace re2jit
                                 case 1: switch (*lparen)
                                 {
                                     case 'L':
-                                        REWRITE(opcode::kUnicodeLetter, rparen);
+                                        REWRITE(inst::kUnicodeLetter, rparen);
                                         goto done;
 
                                     case 'N':
-                                        REWRITE(opcode::kUnicodeNumber, rparen);
+                                        REWRITE(inst::kUnicodeNumber, rparen);
                                         goto done;
 
                                     // TODO other classes?
@@ -145,67 +148,60 @@ namespace re2jit
          * instructions to apply; if at least one matches, then this opcode matched.
          * If not, the list is empty.
          */
-        static inline std::vector<opcode> is_extcode(re2::Prog *p, ssize_t i)
+        static inline std::vector<inst> is_extcode(re2::Prog *p, re2::Prog::Inst *in)
         {
-            re2::Prog::Inst *in = p->inst(i);
-
             // (SURROGATE_L .. SURROGATE_H) in UTF-8 = 0xED 0xB3 0xXX where 0xXX & 0xC0 == 0x80.
             if (in->opcode() != re2::kInstByteRange || in->hi() != 0xED || in->lo() != 0xED)
-                return std::vector<opcode>{};
+                return std::vector<inst>{};
 
             in = p->inst(in->out());
 
             if (in->opcode() != re2::kInstByteRange || in->hi() != 0xB3 || in->lo() != 0xB3)
-                return std::vector<opcode>{};
+                return std::vector<inst>{};
+
+            in = p->inst(in->out());
 
             // The third one is tricky. It can be a choice between any `kInstByteRange`s
             // where both limits are UTF-8 continuation bytes.
-            ssize_t stack[128];
+            ssize_t stack[65];
             ssize_t stptr = 0;
-            stack[stptr++] = in->out();
-            std::vector<opcode> rs;
+            std::vector<inst> rs;
 
-            while (stptr--) {
-                in = p->inst(stack[stptr]);
+            while (true) switch (in->opcode()) {
+                case re2::kInstAlt:
+                case re2::kInstAltMatch:
+                    stack[stptr++] = in->out1();
+                    in = p->inst(in->out());
+                    break;
 
-                switch (in->opcode()) {
-                    case re2::kInstAlt:
-                    case re2::kInstAltMatch:
-                        stack[stptr++] = in->out1();
-                        stack[stptr++] = in->out();
-                        break;
-
-                    case re2::kInstByteRange: {
-                        rejit_bmp_char_t a = in->lo();
-                        rejit_bmp_char_t b = in->hi();
-
-                        if ((a & 0xC0) == 0x80 && (b & 0xC0) == 0x80) {
-                            for (; a <= b; a++) {
-                                rs.push_back(opcode { (rejit_bmp_char_t) (SURROGATE_L + (a & 0x3F)), in->out() });
-                            }
-
-                            break;
+                case re2::kInstByteRange: {
+                    if ((in->lo() & 0xC0) == 0x80 && (in->hi() & 0xC0) == 0x80) {
+                        for (ssize_t a = in->lo(); a <= in->hi(); a++) {
+                            rs.emplace_back(SURROGATE_L + (a & 0x3F), in->out());
                         }
+
+                        if (!stptr)
+                            return rs;
+
+                        in = p->inst(stack[--stptr]);
                     }
-
-                    default:
-                        // regexp can match junk in the middle of characters. not good.
-                        return std::vector<opcode>{};
                 }
-            }
 
-            return rs;
+                default:
+                    // regexp can match junk in the middle of a character. not good.
+                    return std::vector<inst>{};
+            }
         }
 
 
-        #define RE2JIT_WITH_INST(var, prog, i, ext, normal) do { \
-            auto __ins = re2jit::is_extcode(prog, i);            \
-            if (__ins.size()) {                                  \
-                for (auto var : __ins) ext;                      \
-            } else {                                             \
-                auto var = (prog)->inst(i);                      \
-                normal;                                          \
-            }                                                    \
+        #define RE2JIT_WITH_INST(var, prog, i, ext, normal) do {               \
+            auto var = (prog)->inst(i);                                        \
+            auto __ins = re2jit::is_extcode(prog, var);                        \
+            if (__ins.size()) {                                                \
+                for (auto var = __ins.begin(); var != __ins.end(); var++) ext; \
+            } else {                                                           \
+                normal;                                                        \
+            }                                                                  \
         } while (0)
     #endif
 };

@@ -43,33 +43,30 @@ struct re2jit::native
                 nfa->visited[i / 8] |= 1 << (i % 8);
 
                 RE2JIT_WITH_INST(op, _prog, i,
-                    switch (op.opcode) {
-                        case re2jit::opcode::kUnicodeLetter:
-                        case re2jit::opcode::kUnicodeNumber: {
+                    switch (op->opcode()) {
+                        case re2jit::inst::kUnicodeLetter:
+                        case re2jit::inst::kUnicodeNumber: {
                             uint64_t x = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length);
                             if (0 == x)
                                 // not a valid utf-8 character
                                 break;
 
                             rejit_uni_type_t cls = UNICODE_CODEPOINT_TYPE[x & 0xFFFFFFFF];
-                            rejit_uni_type_t expect;
-
-                            switch (op.opcode) {
-                                case re2jit::opcode::kUnicodeLetter: expect = UNICODE_TYPE_L; break;
-                                case re2jit::opcode::kUnicodeNumber: expect = UNICODE_TYPE_N; break;
-                            }
+                            rejit_uni_type_t expect =
+                                op->opcode() == re2jit::inst::kUnicodeLetter ? UNICODE_TYPE_L :
+                                op->opcode() == re2jit::inst::kUnicodeNumber ? UNICODE_TYPE_N : 0;
 
                             if ((cls & UNICODE_GENERAL) != expect) {
                                 re2jit::debug::write("re2jit::vm: class mismatch: %x vs %x\n", cls, expect);
                                 break;
                             }
 
-                            rejit_thread_wait(nfa, op.out, x >> 32);
+                            rejit_thread_wait(nfa, op->out(), x >> 32);
                             break;
                         }
 
                         default:
-                            re2jit::debug::write("re2jit::vm: unknown extcode %hu\n", op.opcode);
+                            re2jit::debug::write("re2jit::vm: unknown extcode %hu\n", op->opcode());
                             break;
                     },
 

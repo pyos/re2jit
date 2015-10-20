@@ -53,9 +53,9 @@ struct re2jit::native
 
         for (i = 0; i < n; i++) {
             RE2JIT_WITH_INST(op, prog, i,
-                switch (op.opcode) {
+                switch (op->opcode()) {
                     default:
-                        indegree[op.out]++;
+                        indegree[op->out()]++;
                         break;
                 },
 
@@ -135,9 +135,9 @@ struct re2jit::native
             }
 
             RE2JIT_WITH_INST(op, prog, i,
-                switch (op.opcode) {
-                    case re2jit::opcode::kUnicodeLetter:
-                    case re2jit::opcode::kUnicodeNumber: {
+                switch (op->opcode()) {
+                    case re2jit::inst::kUnicodeLetter:
+                    case re2jit::inst::kUnicodeNumber: {
                         //    push %rdi
                         PUSH_RDI();
                         //    call rejit_thread_read_utf8
@@ -151,11 +151,9 @@ struct re2jit::native
                         //    ret [if ==]
                         RETQ_IF(JMP_ZERO);
 
-                        rejit_uni_type_t expect;
-                        switch (op.opcode) {
-                            case re2jit::opcode::kUnicodeLetter: expect = UNICODE_TYPE_L; break;
-                            case re2jit::opcode::kUnicodeNumber: expect = UNICODE_TYPE_N; break;
-                        }
+                        rejit_uni_type_t expect =
+                            op->opcode() == re2jit::inst::kUnicodeLetter ? UNICODE_TYPE_L :
+                            op->opcode() == re2jit::inst::kUnicodeNumber ? UNICODE_TYPE_N : 0;
 
                         //    mov %eax, %eax  <-- zero upper 32 bits
                         MOVL_EAX_EAX();
@@ -172,14 +170,14 @@ struct re2jit::native
                         //    ret [if !=]
                         RETQ_IF(JMP_NE);
                         //    mov code+vtable[out], %rsi
-                        MOVQ_TBL_RSI(op.out);
+                        MOVQ_TBL_RSI(op->out());
                         //    jmp rejit_thread_wait
                         JMPL_IMM(&rejit_thread_wait);
                         break;
                     }
 
                     default:
-                        re2jit::debug::write("re2jit::x64: unknown extcode %hu\n", op.opcode);
+                        re2jit::debug::write("re2jit::x64: unknown extcode %hu\n", op->opcode());
                         RETQ();
                         break;
                 },
