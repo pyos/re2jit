@@ -96,9 +96,9 @@ extern "C" {
         size_t offset;
         size_t length;
         size_t states;
-        unsigned char active_queue;
-        unsigned char /* enum RE2JIT_THREAD_ANCHOR */ flags;
-        unsigned char /* enum RE2JIT_EMPTY_FLAGS   */ empty;
+        unsigned int active_queue;
+        unsigned int /* enum RE2JIT_THREAD_ANCHOR */ flags;
+        unsigned int /* enum RE2JIT_EMPTY_FLAGS   */ empty;
         /* Actual length of `thread_t.groups`. Must be at least 2 to store
          * the location of the whole match, + 2 for each subgroup if needed. */
         unsigned int groups;
