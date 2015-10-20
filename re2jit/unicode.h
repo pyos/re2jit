@@ -1,13 +1,9 @@
 #ifndef RE2JIT_UNICODE_H
 #define RE2JIT_UNICODE_H
 
-#include <stdint.h>
-
-
 extern "C" {
-    typedef uint16_t rejit_bmp_char_t;
-    typedef uint32_t rejit_uni_char_t;
-
+    #include <stdint.h>
+    #include "unicodedata.h"
 
     // There's a range of unused characters at U+D800 through U+DFFF.
     // These are UTF-16 surrogate characters, intended to be used to address

@@ -33,13 +33,16 @@ _require_headers = \
 	re2jit/list.h \
 	re2jit/debug.h \
 	re2jit/threads.h \
-	re2jit/rewriter.h
+	re2jit/rewriter.h \
+	re2jit/unicode.h \
+	re2jit/unicodedata.h
 
 
 _require_objects = \
 	obj/it.o \
 	obj/debug.o \
-	obj/threads.o
+	obj/threads.o \
+	obj/unicodedata.o
 
 
 _require_platform_code = \
@@ -64,6 +67,7 @@ _require_test_run = \
 
 ARCHIVE = ar rcs
 INSTALL = install -D
+PYTHON3 = /usr/bin/python3
 CCFLAGS = ./ccflags
 DYNLINK = $(CC) -shared -o
 COMPILE = $(CXX) $(CXXFLAGS) $(_options) -std=c++11 -fPIC -I. -I./re2 -L./obj -L./re2/obj
@@ -91,6 +95,13 @@ re2: .gitmodules
 
 re2/obj/libre2.a: re2 .git/modules/re2/refs/heads/master
 	$(MAKE) -C re2 obj/libre2.a
+
+
+re2jit/unicodedata.h: re2jit/unicodedata.py
+	$(PYTHON3) -m re2jit.unicodedata
+
+
+re2jit/unicodedata.cc: re2jit/unicodedata.h
 
 
 obj/libre2jit.a: $(_require_objects)
