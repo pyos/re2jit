@@ -28,15 +28,6 @@ static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
 }
 
 
-static void rejit_thread_release(struct rejit_threadset_t *r, struct rejit_thread_t *t)
-{
-    rejit_list_remove(t);
-    rejit_list_remove(&t->category);
-    t->next = r->free;
-    r->free = t;
-}
-
-
 static struct rejit_thread_t *rejit_thread_fork(struct rejit_threadset_t *r)
 {
     struct rejit_thread_t *t = rejit_thread_acquire(r);
@@ -155,30 +146,24 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r)
                 q->entry(r);
             #endif
 
-            rejit_thread_release(r, q);
+            q->next = r->free;
+            r->free = q;
 
             t = r->queues[queue].first;
         }
 
         r->running = NULL;
 
+        if (!r->length) {
+            return 0;
+        }
+
         // this bit vector is shared across all threads on a single queue.
         // whichever thread first enters a state gets to own that state.
         memset(r->visited, 0, (r->states + 7) / 8);
 
         r->active_queue = queue = (queue + 1) % (RE2JIT_THREAD_LOOKAHEAD + 1);
-
-        if (!r->length) {
-            if (r->queues[queue].first != rejit_list_end(&r->queues[queue])) {
-                // Allow remaining greedy threads to fail.
-                continue;
-            }
-
-            return 0;
-        }
-
         r->offset++;
-
         r->empty = 0;
 
         if (*r->input++ == '\n') {
@@ -215,9 +200,13 @@ int rejit_thread_match(struct rejit_threadset_t *r)
     t->groups[1] = r->offset;
 
     while (t->next != rejit_list_end(&r->all_threads)) {
+        struct rejit_thread_t *q = t->next;
         // Can safely fail all less important threads. If they fail, this one
         // has matched, so whatever. If they match, this one contains better results.
-        rejit_thread_release(r, t->next);
+        rejit_list_remove(q);
+        rejit_list_remove(&q->category);
+        q->next = r->free;
+        r->free = q;
     }
 
     return 1;

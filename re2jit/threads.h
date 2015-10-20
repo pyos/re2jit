@@ -31,7 +31,7 @@ extern "C" {
          * idea to "invent" some opcodes that can match whole UTF-8 characters, though... */
         #define RE2JIT_THREAD_LOOKAHEAD 1
     #else
-        #define RE2JIT_THREAD_LOOKAHEAD 6
+        #define RE2JIT_THREAD_LOOKAHEAD 7
     #endif
 
 
