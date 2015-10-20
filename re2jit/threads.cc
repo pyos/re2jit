@@ -130,14 +130,13 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r)
     while (1) {
         struct rejit_thread_t *t = r->queues[queue].first;
 
-        while (t != rejit_list_end(&r->queues[queue])) {
+        for (; t != rejit_list_end(&r->queues[queue]); t = r->queues[queue].first) {
             struct rejit_thread_t *q = RE2JIT_DEREF_THREAD(t);
 
             if (q->wait) {
                 q->wait--;
                 rejit_list_remove(&q->category);
                 rejit_list_append(r->queues[!queue].last, &q->category);
-                t = r->queues[queue].first;
                 continue;
             }
 
@@ -155,8 +154,6 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r)
 
             q->next = r->free;
             r->free = q;
-
-            t = r->queues[queue].first;
         }
 
         r->running = NULL;
