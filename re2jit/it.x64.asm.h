@@ -21,6 +21,7 @@
 // mov imm32/64, r64
 #define MOVL_IMM_RAX(p) INSCODE(0x48, 0xC7, 0xC0, IMM32(p))
 #define MOVL_IMM_RDX(p) INSCODE(0x48, 0xC7, 0xC2, IMM32(p))
+#define MOVL_IMM_EDX(p) INSCODE(            0xBA, IMM32(p))
 #define MOVQ_IMM_RSI(p) INSCODE(0x48, 0xBE, IMM64(p))
 #define MOVQ_TBL_RSI(p) INSBACK(p, 2); MOVQ_IMM_RSI(0ULL)
 

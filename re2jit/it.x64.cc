@@ -180,8 +180,8 @@ struct re2jit::native
 
                     //    mov code+vtable[out], %rsi
                     MOVQ_TBL_RSI(op->out());
-                    //    mov $1, %rdx
-                    MOVL_IMM_RDX(1ULL);
+                    //    mov $1, %edx
+                    MOVL_IMM_EDX(1u);
                     //    jmp rejit_thread_wait
                     JMPL_IMM(&rejit_thread_wait);
                     break;
