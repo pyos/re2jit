@@ -103,17 +103,18 @@ extern "C" {
         size_t offset;
         size_t length;
         size_t states;
-        unsigned /* enum RE2JIT_THREAD_ANCHOR */ flags;
-        unsigned /* enum RE2JIT_EMPTY_FLAGS   */ empty;
+        unsigned char active_queue;
+        unsigned char /* enum RE2JIT_THREAD_ANCHOR */ flags;
+        unsigned char /* enum RE2JIT_EMPTY_FLAGS   */ empty;
+        /* Actual length of `thread_t.groups`. Must be at least 2 to store
+         * the location of the whole match, + 2 for each subgroup if needed. */
+        unsigned int groups;
         /* A vector of bits, one for each state, marking whether that state was already
          * visited while handling this input character. Used to avoid infinite
          * loops consisting purely of empty transitions. */
         uint8_t *visited;
         /* Entry point of the initial thread. */
         rejit_entry_t entry;
-        /* Actual length of `thread_t.groups`. Must be at least 2 to store
-         * the location of the whole match, + 2 for each subgroup if needed. */
-        size_t groups;
         /* Currently active thread, set by `thread_dispatch`. */
         struct rejit_thread_t *running;
         /* Last (so far) thread forked off the currently running one. Threads are created
@@ -121,18 +122,17 @@ extern "C" {
         struct rejit_thread_t *forked;
         /* Linked list of failed threads. These can be reused to avoid allocations. */
         struct rejit_thread_t *free;
-        /* Ring buffer of thread queues. The threads in the active queue are ready to
-         * run; the rest are waiting for the input pointer to advance. When the active
-         * queue becomes empty (due to all threads in it failing, matching, or reading
-         * an input byte and moving themselves to a different queue), the input string
-         * is advanced one byte and the queue buffer is rotated one position. */
-        size_t active_queue;
-        // NOTE use RE2JIT_DEREF_THREAD on objects from these lists to get valid pointers.
-        RE2JIT_LIST_ROOT(struct rejit_thread_t) queues[RE2JIT_THREAD_LOOKAHEAD + 1];
         /* Doubly-linked list of threads ordered by descending priority. Again.
          * There is no match iff this becomes empty at some point, and there is a match
          * iff there is exactly one thread, and it is not in any of the queues. */
         RE2JIT_LIST_ROOT(struct rejit_thread_t) all_threads;
+        /* Ring buffer of thread queues. The threads in the active queue are ready to
+         * run; the rest are waiting for the input pointer to advance. When the active
+         * queue becomes empty (due to all threads in it failing, matching, or reading
+         * an input byte and moving themselves to a different queue), the input string
+         * is advanced one byte and the queue buffer is rotated one position.
+         * Use RE2JIT_DEREF_THREAD on objects from these lists to get valid pointers. */
+        RE2JIT_LIST_ROOT(struct rejit_thread_t) queues[RE2JIT_THREAD_LOOKAHEAD + 1];
     };
 
 
