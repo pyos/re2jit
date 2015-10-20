@@ -24,7 +24,8 @@
 namespace re2jit
 {
     it::it(const re2::StringPiece& pattern) : it(pattern, RE2::Quiet) {}
-    it::it(const re2::StringPiece& pattern, const RE2::Options& options) : RE2(rewrite(pattern), options)
+    it::it(const re2::StringPiece& pattern, const RE2::Options& options)
+        : RE2(options.encoding() == Options::EncodingUTF8 ? rewrite(pattern) : pattern, options)
     {
         if (RE2::ok()) {
             // May fail, but highly unlikely -- `RE2::Init` already compiled it.
