@@ -45,12 +45,10 @@ struct re2jit::native
 
         for (i = 0; i < n; i++) {
             RE2JIT_WITH_INST(op, prog, i,
-                switch (op->opcode()) {
-                    default:
-                        indegree[op->out()]++;
-                        break;
-                },
+                // re2jit::inst *
+                indegree[op->out()]++,
 
+                // re2::Prog::Inst *
                 switch (op->opcode()) {
                     case re2::kInstAlt:
                     case re2::kInstAltMatch:
