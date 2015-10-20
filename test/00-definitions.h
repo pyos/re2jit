@@ -44,7 +44,7 @@
 
 #define GENERIC_GROUP_TEST(name, regex, anchor, _input, ngroups, __xs)           \
     GENERIC_TEST(name, regex, anchor, _input, ngroups, {                         \
-        for (size_t i = 0; i < ngroups; i++) {                                   \
+        if (rjmatch) for (size_t i = 0; i < ngroups; i++) {                      \
             const auto &g2 = r2groups[i];                                        \
             const auto &gj = rjgroups[i];                                        \
             if (g2 != gj) {                                                      \
