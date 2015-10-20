@@ -8,6 +8,7 @@
 #include "it.h"
 #include "debug.h"
 #include "threads.h"
+#include "rewriter.h"
 
 #include "it.x64.asm.h"
 
@@ -45,22 +46,27 @@ struct re2jit::native
         std::vector< unsigned > indegree(n);
 
         for (i = 0; i < n; i++) {
-            op = prog->inst(i);
+            RE2JIT_WITH_INST(op, prog, i,
+                switch (op.opcode) {
+                    default:
+                        indegree[op.out]++;
+                        break;
+                },
+                switch (op->opcode()) {
+                    case re2::kInstAlt:
+                    case re2::kInstAltMatch:
+                        indegree[op->out1()]++;
 
-            switch (op->opcode()) {
-                case re2::kInstAlt:
-                case re2::kInstAltMatch:
-                    indegree[op->out1()]++;
+                    case re2::kInstNop:
+                    case re2::kInstCapture:
+                    case re2::kInstByteRange:
+                    case re2::kInstEmptyWidth:
+                        indegree[op->out()]++;
 
-                case re2::kInstNop:
-                case re2::kInstCapture:
-                case re2::kInstByteRange:
-                case re2::kInstEmptyWidth:
-                    indegree[op->out()]++;
-
-                default:
-                    break;
-            }
+                    default:
+                        break;
+                }
+            );
         }
 
         // States not reachable from the entry point don't need to be compiled. Duh.
@@ -80,7 +86,7 @@ struct re2jit::native
                 switch (op->opcode()) {
                     case re2::kInstAlt:
                     case re2::kInstAltMatch:
-                        if (!reachable[op->out1()]) {
+                        if (!reachable[op->out1()] && indegree[op->out()]) {
                             reachable[op->out1()] = true;
                             visit.push_back(op->out1());
                         }
@@ -89,7 +95,7 @@ struct re2jit::native
                     case re2::kInstCapture:
                     case re2::kInstByteRange:
                     case re2::kInstEmptyWidth:
-                        if (!reachable[op->out()]) {
+                        if (!reachable[op->out()] && indegree[op->out()]) {
                             reachable[op->out()] = true;
                             visit.push_back(op->out());
                         }
@@ -101,7 +107,6 @@ struct re2jit::native
         }
 
         for (i = 0; i < n; i++) if (reachable[i]) {
-            op = prog->inst(i);
             vtable[i] = code.size();
 
             // Each opcode should conform to System V ABI calling convention.
@@ -111,7 +116,7 @@ struct re2jit::native
             //   %rax :: int -- 1 if found a match, 0 otherwise
 
             // kInstFail will do `ret` anyway.
-            if (op->opcode() != re2::kInstFail && indegree[i] > 1) {
+            if (prog->inst(i)->opcode() != re2::kInstFail && indegree[i] > 1) {
                 //    mov (%rdi).visited, %rsi
                 MOVB_MRDI_RSI(offsetof(struct rejit_threadset_t, visited));
                 //    test 1<<(i%8), %rsi[i / 8]
@@ -122,134 +127,157 @@ struct re2jit::native
                 ORB_IMM_MRSI(1 << (i % 8), i / 8);
             }
 
-            switch (op->opcode()) {
-                case re2::kInstAltMatch:
-                case re2::kInstAlt:
-                    //    call code+vtable[out]
-                    PUSH_RDI(); CALL_TBL(op->out()); POP_RDI();
-                    //    test %eax, %eax -- non-zero if found a match
-                    TEST_EAX_EAX();
-                    //    jnz -> ret, skipping over `xor %eax, %eax`
-                    JMP_ABS(JMP_NZ, 2L);
+            RE2JIT_WITH_INST(op, prog, i,
+                switch (op.opcode) {
+                    case re2jit::opcode::kUnicodeLetter:
+                    case re2jit::opcode::kUnicodeNumber: {
+                        /* rejit_uni_char_t c;
 
-                    if ((size_t) op->out1() != i + 1) {
-                        //    jmp  code+vtable[out1]
-                        JMP_UNCOND_TBL(op->out1());
+                        int len = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length, &c);
+                        if (len == -1)
+                            // not a valid utf-8 character
+                            break;
+
+                        // TODO check the class of `c`
+                        rejit_thread_wait(nfa, op.out, len);
+                        break; */
                     }
 
-                    break;
+                    default:
+                        re2jit::debug::write("re2jit::x64: unknown extcode %hu\n", op.opcode);
+                        RETQ();
+                        break;
+                },
 
-                case re2::kInstByteRange:
-                    //    cmp $0, (%rdi).length
-                    CMPB_IMM_MRDI(0, offsetof(struct rejit_threadset_t, length));
-                    //    ret [if ==]
-                    RETQ_IF(JMP_EQ);
+                switch (op->opcode()) {
+                    case re2::kInstAltMatch:
+                    case re2::kInstAlt:
+                        //    call code+vtable[out]
+                        PUSH_RDI(); CALL_TBL(op->out()); POP_RDI();
+                        //    test %eax, %eax -- non-zero if found a match
+                        TEST_EAX_EAX();
+                        //    jnz -> ret, skipping over `xor %eax, %eax`
+                        JMP_ABS(JMP_NZ, 2L);
 
-                    //    mov (%rdi).input, %rax
-                    MOVB_MRDI_RAX(offsetof(struct rejit_threadset_t, input));
-                    //    mov (%rax), %cl
-                    MOV__MRAX__CL();
+                        if ((size_t) op->out1() != i + 1) {
+                            //    jmp  code+vtable[out1]
+                            JMP_UNCOND_TBL(op->out1());
+                        }
 
-                    if (op->foldcase()) {
-                        //    cmp $'A', %cl
-                        CMPB_IMM__CL('A');
-                        //    jb skip
-                        JMP_OVER(JMP_LT_U, {
-                            //    cmp $'Z', %cl
-                            CMPB_IMM__CL('Z');
-                            //    ja  skip
-                            JMP_OVER(JMP_GT_U,
-                                //    add $'a'-'A', %cl
-                                ADDB_IMM__CL('a' - 'A'));
-                        }); // skip:
-                    }
+                        break;
 
-                    if (op->hi() == op->lo()) {
-                        //    cmp lo, %cl
-                        CMPB_IMM__CL(op->lo());
-                        //    ret [if !=]
-                        RETQ_IF(JMP_NE);
-                    } else {
-                        //    sub lo, %cl
-                        SUBB_IMM__CL(op->lo());
-                        //    cmp hi-lo, %cl
-                        CMPB_IMM__CL(op->hi() - op->lo());
-                        //    ret [if >]
-                        RETQ_IF(JMP_GT_U);
-                    }
+                    case re2::kInstByteRange:
+                        //    cmp $0, (%rdi).length
+                        CMPB_IMM_MRDI(0, offsetof(struct rejit_threadset_t, length));
+                        //    ret [if ==]
+                        RETQ_IF(JMP_EQ);
 
-                    //    mov code+vtable[out], %rsi
-                    MOVQ_TBL_RSI(op->out());
-                    //    mov $1, %edx
-                    MOVL_IMM_EDX(1u);
-                    //    jmp rejit_thread_wait
-                    JMPL_IMM(&rejit_thread_wait);
-                    break;
+                        //    mov (%rdi).input, %rax
+                        MOVB_MRDI_RAX(offsetof(struct rejit_threadset_t, input));
+                        //    mov (%rax), %cl
+                        MOV__MRAX__CL();
 
-                case re2::kInstCapture:
-                    //    cmp cap, (%rdi).groups
-                    CMPL_IMM_MRDI(op->cap(), offsetof(struct rejit_threadset_t, groups));
-                    //    jbe code+vtable[out]
-                    JMP_TBL(JMP_LE_U, op->out());
+                        if (op->foldcase()) {
+                            //    cmp $'A', %cl
+                            CMPB_IMM__CL('A');
+                            //    jb skip
+                            JMP_OVER(JMP_LT_U, {
+                                //    cmp $'Z', %cl
+                                CMPB_IMM__CL('Z');
+                                //    ja  skip
+                                JMP_OVER(JMP_GT_U,
+                                    //    add $'a'-'A', %cl
+                                    ADDB_IMM__CL('a' - 'A'));
+                            }); // skip:
+                        }
 
-                    //    mov (%rdi).running, %rcx
-                    MOVB_MRDI_RCX(offsetof(struct rejit_threadset_t, running));
-                    //    mov (%rdi).offset, %rax
-                    MOVB_MRDI_RAX(offsetof(struct rejit_threadset_t, offset));
-                    //    mov (%rcx).groups[cap], %esi
-                    MOVL_MRCX_ESI(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
-                    //    mov %eax, (%rcx).groups[cap]
-                    MOVL_EAX_MRCX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
+                        if (op->hi() == op->lo()) {
+                            //    cmp lo, %cl
+                            CMPB_IMM__CL(op->lo());
+                            //    ret [if !=]
+                            RETQ_IF(JMP_NE);
+                        } else {
+                            //    sub lo, %cl
+                            SUBB_IMM__CL(op->lo());
+                            //    cmp hi-lo, %cl
+                            CMPB_IMM__CL(op->hi() - op->lo());
+                            //    ret [if >]
+                            RETQ_IF(JMP_GT_U);
+                        }
 
-                    //    call code+vtable[out]
-                    PUSH_RDI(); PUSH_RSI(); CALL_TBL(op->out()); POP_RSI(); POP_RDI();
+                        //    mov code+vtable[out], %rsi
+                        MOVQ_TBL_RSI(op->out());
+                        //    mov $1, %edx
+                        MOVL_IMM_EDX(1u);
+                        //    jmp rejit_thread_wait
+                        JMPL_IMM(&rejit_thread_wait);
+                        break;
 
-                    //    mov (%rdi).running, %rcx
-                    MOVB_MRDI_RCX(offsetof(struct rejit_threadset_t, running));
-                    //    mov %esi, (%rcx).groups[cap]
-                    MOVL_ESI_MRCX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
-                    //    ret
-                    RETQ();
-                    break;
+                    case re2::kInstCapture:
+                        //    cmp cap, (%rdi).groups
+                        CMPL_IMM_MRDI(op->cap(), offsetof(struct rejit_threadset_t, groups));
+                        //    jbe code+vtable[out]
+                        JMP_TBL(JMP_LE_U, op->out());
 
-                case re2::kInstEmptyWidth:
-                    //    mov (%rdi).empty, %eax
-                    MOVB_MRDI_EAX(offsetof(struct rejit_threadset_t, empty));
-                    //    not %eax
-                    NOTL_EAX();
-                    //    test empty, %eax
-                    TEST_IMM_EAX(op->empty());
-                    //    ret [if non-zero]
-                    RETQ_IF(JMP_NZ);
+                        //    mov (%rdi).running, %rcx
+                        MOVB_MRDI_RCX(offsetof(struct rejit_threadset_t, running));
+                        //    mov (%rdi).offset, %rax
+                        MOVB_MRDI_RAX(offsetof(struct rejit_threadset_t, offset));
+                        //    mov (%rcx).groups[cap], %esi
+                        MOVL_MRCX_ESI(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
+                        //    mov %eax, (%rcx).groups[cap]
+                        MOVL_EAX_MRCX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
 
-                    if ((size_t) op->out() != i + 1) {
-                        //    jmp code+vtable[out]
-                        JMP_UNCOND_TBL(op->out());
-                    }
+                        //    call code+vtable[out]
+                        PUSH_RDI(); PUSH_RSI(); CALL_TBL(op->out()); POP_RSI(); POP_RDI();
 
-                    break;
+                        //    mov (%rdi).running, %rcx
+                        MOVB_MRDI_RCX(offsetof(struct rejit_threadset_t, running));
+                        //    mov %esi, (%rcx).groups[cap]
+                        MOVL_ESI_MRCX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
+                        //    ret
+                        RETQ();
+                        break;
 
-                case re2::kInstNop:
-                    if ((size_t) op->out() != i + 1) {
-                        //    jmp code+vtable[out]
-                        JMP_UNCOND_TBL(op->out());
-                    }
-                    break;
+                    case re2::kInstEmptyWidth:
+                        //    mov (%rdi).empty, %eax
+                        MOVB_MRDI_EAX(offsetof(struct rejit_threadset_t, empty));
+                        //    not %eax
+                        NOTL_EAX();
+                        //    test empty, %eax
+                        TEST_IMM_EAX(op->empty());
+                        //    ret [if non-zero]
+                        RETQ_IF(JMP_NZ);
 
-                case re2::kInstMatch:
-                    //    jmp rejit_thread_match
-                    JMPL_IMM(&rejit_thread_match);
-                    break;
+                        if ((size_t) op->out() != i + 1) {
+                            //    jmp code+vtable[out]
+                            JMP_UNCOND_TBL(op->out());
+                        }
 
-                case re2::kInstFail:
-                    //    ret
-                    RETQ();
-                    break;
+                        break;
 
-                default:
-                    re2jit::debug::write("re2jit::x64: unknown opcode %d\n", op->opcode());
-                    return;
-            }
+                    case re2::kInstNop:
+                        if ((size_t) op->out() != i + 1) {
+                            //    jmp code+vtable[out]
+                            JMP_UNCOND_TBL(op->out());
+                        }
+                        break;
+
+                    case re2::kInstMatch:
+                        //    jmp rejit_thread_match
+                        JMPL_IMM(&rejit_thread_match);
+                        break;
+
+                    case re2::kInstFail:
+                        //    ret
+                        RETQ();
+                        break;
+
+                    default:
+                        re2jit::debug::write("re2jit::x64: unknown opcode %d\n", op->opcode());
+                        return;
+                }
+            );
         }
 
         uint8_t *target = (uint8_t *) mmap(0, code.size(),
