@@ -5,7 +5,7 @@ import unicodedata
 
 def writeinto(file, data, *args, **kwargs):
     with open(file, 'w') as fd:
-        print(textwrap.dedent(data.format(*args, **kwargs)), file=fd)
+        print(textwrap.dedent(data).format(*args, **kwargs), file=fd)
 
 
 UNICODE_CODEPOINT_MAX = 0x10FFFF
