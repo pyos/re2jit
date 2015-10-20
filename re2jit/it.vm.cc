@@ -46,15 +46,13 @@ struct re2jit::native
                     switch (op.opcode) {
                         case re2jit::opcode::kUnicodeLetter:
                         case re2jit::opcode::kUnicodeNumber: {
-                            rejit_uni_char_t c;
-
-                            int len = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length, &c);
-                            if (len == -1)
+                            uint64_t x = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length);
+                            if (0 == x)
                                 // not a valid utf-8 character
                                 break;
 
-                            // TODO check the class of `c`
-                            rejit_thread_wait(nfa, op.out, len);
+                            // TODO check the class of `x & 0xFFFFFFFF`
+                            rejit_thread_wait(nfa, op.out, x >> 32);
                             break;
                         }
 

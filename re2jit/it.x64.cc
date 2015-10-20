@@ -13,6 +13,12 @@
 #include "it.x64.asm.h"
 
 
+uint64_t rejit_thread_read_utf8(const rejit_threadset_t *nfa)
+{
+    return rejit_read_utf8((const uint8_t *) nfa->input, nfa->length);
+}
+
+
 struct re2jit::native
 {
     void *_code;
@@ -52,6 +58,7 @@ struct re2jit::native
                         indegree[op.out]++;
                         break;
                 },
+
                 switch (op->opcode()) {
                     case re2::kInstAlt:
                     case re2::kInstAltMatch:
@@ -131,16 +138,24 @@ struct re2jit::native
                 switch (op.opcode) {
                     case re2jit::opcode::kUnicodeLetter:
                     case re2jit::opcode::kUnicodeNumber: {
-                        /* rejit_uni_char_t c;
-
-                        int len = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length, &c);
-                        if (len == -1)
-                            // not a valid utf-8 character
-                            break;
-
-                        // TODO check the class of `c`
-                        rejit_thread_wait(nfa, op.out, len);
-                        break; */
+                        //    push %rdi
+                        PUSH_RDI();
+                        //    call rejit_thread_read_utf8
+                        CALL_IMM(&rejit_thread_read_utf8);
+                        //    pop %rdi
+                        POP_RDI();
+                        //    mov %rax, %rdx
+                        MOVQ_RAX_RDX();
+                        //    shr $32, %rdx
+                        SHRQ_IMM_RDX(32);
+                        //    ret [if ==]
+                        RETQ_IF(JMP_ZERO);
+                        // TODO check the class of %eax
+                        //    mov code+vtable[out], %rsi
+                        MOVQ_TBL_RSI(op.out);
+                        //    jmp rejit_thread_wait
+                        JMPL_IMM(&rejit_thread_wait);
+                        break;
                     }
 
                     default:

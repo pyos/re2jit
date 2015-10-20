@@ -21,24 +21,23 @@ extern "C" {
 
 
     /* Attempt to read a single UTF-8 character from a buffer. On success,
-     * write that character to an out-param as a 32-bit number and return
-     * its length in bytes. On failure, return -1. */
-    static inline int rejit_read_utf8(const uint8_t *buf, size_t size, rejit_uni_char_t *out)
+     * return that character as lower 32 bits and its length as upper 32 bits.
+     * On failure, return 0. */
+    static inline uint64_t rejit_read_utf8(const uint8_t *buf, size_t size)
     {
         #define _UTF8_CONT(i, off) ((buf[i] & 0x3F) << (6 * off))
-        #define _UTF8_MCHR(s, msk, rest)                            \
-            if (size >= s && (*buf & msk) == ((msk << 1) & 0xFF)) { \
-                *out = ((buf[0] & ~msk) << (6 * (s - 1))) | rest;   \
-                return s;                                           \
+        #define _UTF8_MCHR(s, msk, rest)                                      \
+            if (size >= s && (*buf & msk) == ((msk << 1) & 0xFF)) {           \
+                return (s << 32) | ((buf[0] & ~msk) << (6 * (s - 1))) | rest; \
             }
 
-        _UTF8_MCHR(1, 0x80, 0);
-        _UTF8_MCHR(2, 0xE0, _UTF8_CONT(1, 0));
-        _UTF8_MCHR(3, 0xF0, _UTF8_CONT(1, 1) | _UTF8_CONT(2, 0));
-        _UTF8_MCHR(4, 0xF8, _UTF8_CONT(1, 2) | _UTF8_CONT(2, 1) | _UTF8_CONT(3, 0));
-        _UTF8_MCHR(5, 0xFB, _UTF8_CONT(1, 3) | _UTF8_CONT(2, 2) | _UTF8_CONT(3, 1) | _UTF8_CONT(4, 0));
-        _UTF8_MCHR(6, 0xFE, _UTF8_CONT(1, 4) | _UTF8_CONT(2, 3) | _UTF8_CONT(3, 2) | _UTF8_CONT(4, 1) | _UTF8_CONT(5, 0));
-        return -1;
+        _UTF8_MCHR(1LL, 0x80, 0);
+        _UTF8_MCHR(2LL, 0xE0, _UTF8_CONT(1, 0));
+        _UTF8_MCHR(3LL, 0xF0, _UTF8_CONT(1, 1) | _UTF8_CONT(2, 0));
+        _UTF8_MCHR(4LL, 0xF8, _UTF8_CONT(1, 2) | _UTF8_CONT(2, 1) | _UTF8_CONT(3, 0));
+        _UTF8_MCHR(5LL, 0xFB, _UTF8_CONT(1, 3) | _UTF8_CONT(2, 2) | _UTF8_CONT(3, 1) | _UTF8_CONT(4, 0));
+        _UTF8_MCHR(6LL, 0xFE, _UTF8_CONT(1, 4) | _UTF8_CONT(2, 3) | _UTF8_CONT(3, 2) | _UTF8_CONT(4, 1) | _UTF8_CONT(5, 0));
+        return 0;
 
         #undef _UTF8_MCHR
         #undef _UTF8_CONT

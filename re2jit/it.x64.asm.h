@@ -17,7 +17,6 @@
 #define IMM32(p) IMM8(p, 0), IMM8(p, 8), IMM8(p, 16), IMM8(p, 24)
 #define IMM64(p) IMM8(p, 0), IMM8(p, 8), IMM8(p, 16), IMM8(p, 24), IMM8(p, 32), IMM8(p, 40), IMM8(p, 48), IMM8(p, 56)
 
-
 // mov imm32/64, r64
 #define MOVL_IMM_RAX(p) INSCODE(0x48, 0xC7, 0xC0, IMM32(p))
 #define MOVL_IMM_RDX(p) INSCODE(0x48, 0xC7, 0xC2, IMM32(p))
@@ -25,6 +24,8 @@
 #define MOVQ_IMM_RSI(p) INSCODE(0x48, 0xBE, IMM64(p))
 #define MOVQ_TBL_RSI(p) INSBACK(p, 2); MOVQ_IMM_RSI(0ULL)
 
+// mov r64, r64
+#define MOVQ_RAX_RDX() INSCODE(0x48, 0x89, 0xC2)
 
 // mov m64=8/32(r64), r8/32/64
 #define MOV__MRAX__CL()  INSCODE(      0x8a, 0x08)
@@ -34,15 +35,12 @@
 #define MOVB_MRDI_RSI(p) INSCODE(0x48, 0x8b, 0x77, IMM8(p, 0))
 #define MOVL_MRCX_ESI(p) INSCODE(      0x8b, 0xB1, IMM32(p))
 
-
 // mov r32/64, m64=imm8/32(r64)
 #define MOVL_EAX_MRCX(p) INSCODE(0x89, 0x81, IMM32(p))
 #define MOVL_ESI_MRCX(p) INSCODE(0x89, 0xB1, IMM32(p))
 
-
 // cmp imm8/32, r8/64
 #define CMPB_IMM__CL(p) INSCODE(0x80, 0xF9, IMM8(p, 0))
-
 
 // cmp imm8/32, m64=imm8(r64)
 #define CMPB_IMM_MRDI(imm, d) INSCODE(0x83, 0x7F, IMM8(d, 0), IMM8(imm, 0))
@@ -54,6 +52,9 @@
 
 // not r32
 #define NOTL_EAX() INSCODE(0xF7, 0xD0)
+
+// shr imm8, r64
+#define SHRQ_IMM_RDX(p) INSCODE(0x48, 0xC1, 0xEA, IMM8(p, 0))
 
 // test r32/imm32, r32
 #define TEST_IMM_EAX(p) INSCODE(0xA9, IMM32(p))
