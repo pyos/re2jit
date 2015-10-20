@@ -12,6 +12,7 @@ static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
         t = r->free;
         r->free = t->next;
         t->next = t;
+        t->wait = 0;
         return t;
     }
 
@@ -24,6 +25,7 @@ static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
 
     rejit_list_init(&t->category);
     rejit_list_init(t);
+    t->wait = 0;
     return t;
 }
 
@@ -70,11 +72,8 @@ int rejit_thread_init(struct rejit_threadset_t *r)
         return 0;
     }
 
-    size_t i;
-
-    for (i = 0; i <= RE2JIT_THREAD_LOOKAHEAD; i++) {
-        rejit_list_init(&r->queues[i]);
-    }
+    rejit_list_init(&r->queues[0]);
+    rejit_list_init(&r->queues[1]);
 
     r->empty = RE2JIT_EMPTY_BEGIN_LINE | RE2JIT_EMPTY_BEGIN_TEXT;
     r->offset = 0;
@@ -126,13 +125,21 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r)
         }
     #endif
 
-    size_t queue = r->active_queue;
+    unsigned char queue = r->active_queue;
 
     while (1) {
         struct rejit_thread_t *t = r->queues[queue].first;
 
         while (t != rejit_list_end(&r->queues[queue])) {
             struct rejit_thread_t *q = RE2JIT_DEREF_THREAD(t);
+
+            if (q->wait) {
+                q->wait--;
+                rejit_list_remove(&q->category);
+                rejit_list_append(r->queues[!queue].last, &q->category);
+                t = r->queues[queue].first;
+                continue;
+            }
 
             r->running = q;
             r->forked  = q->prev;
@@ -162,7 +169,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r)
         // whichever thread first enters a state gets to own that state.
         memset(r->visited, 0, (r->states + 7) / 8);
 
-        r->active_queue = queue = (queue + 1) % (RE2JIT_THREAD_LOOKAHEAD + 1);
+        r->active_queue = queue = !queue;
         r->offset++;
         r->empty = 0;
 
@@ -223,9 +230,8 @@ int rejit_thread_wait(struct rejit_threadset_t *r, rejit_entry_t entry, size_t s
     }
 
     t->entry = entry;
-
-    size_t queue = (r->active_queue + shift) % (RE2JIT_THREAD_LOOKAHEAD + 1);
-    rejit_list_append(r->queues[queue].last, &t->category);
+    t->wait = shift - 1;
+    rejit_list_append(r->queues[!r->active_queue].last, &t->category);
     return 0;
 }
 

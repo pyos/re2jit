@@ -25,15 +25,6 @@ extern "C" {
 
     #include "list.h"
 
-    #if RE2JIT_NO_EXTCODES
-        /* Maximum number of bytes a thread can consume per one opcode.
-         * Normally, re2 only emits opcodes that match a single byte. I got this sweet
-         * idea to "invent" some opcodes that can match whole UTF-8 characters, though... */
-        #define RE2JIT_THREAD_LOOKAHEAD 1
-    #else
-        #define RE2JIT_THREAD_LOOKAHEAD 7
-    #endif
-
 
     enum RE2JIT_THREAD_ANCHOR {
         /* If start point is unanchored, we want to create a copy of the initial thread
@@ -89,6 +80,8 @@ extern "C" {
         #define RE2JIT_DEREF_THREAD(ref) ((struct rejit_thread_t *)(((char *)(ref)) - offsetof(struct rejit_thread_t, category)))
         /* Pointer to the beginning of the thread's code. */
         rejit_entry_t entry;
+        /* If non-zero, decrement and move to the next queue instead of running. */
+        size_t wait;
         /* VLA mapping of group indices to indices into the input string.
          * Subgroup N matched the substring indexed by [groups[2N]:groups[2N+1]).
          * Subgroup 0 is special -- it is the whole match. Unmatched subgroups
@@ -132,7 +125,7 @@ extern "C" {
          * an input byte and moving themselves to a different queue), the input string
          * is advanced one byte and the queue buffer is rotated one position.
          * Use RE2JIT_DEREF_THREAD on objects from these lists to get valid pointers. */
-        RE2JIT_LIST_ROOT(struct rejit_thread_t) queues[RE2JIT_THREAD_LOOKAHEAD + 1];
+        RE2JIT_LIST_ROOT(struct rejit_thread_t) queues[2];
     };
 
 
