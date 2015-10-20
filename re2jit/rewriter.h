@@ -2,16 +2,66 @@
 #define RE2JIT_REWRITER_H
 
 #include <vector>
+#include <cstring>
 
-#include <re2/re2.h>
+#include <re2/prog.h>
+#include <re2/stringpiece.h>
+
 #include <re2jit/unicode.h>
 
 
 namespace re2jit
 {
+    struct opcode {
+        #define _opcode(n, v) static constexpr const rejit_bmp_char_t n = SURROGATE_L + v;
+        _opcode(kUnicodeLetter, 0);
+        _opcode(kUnicodeNumber, 1);
+        #undef _opcode
+
+        // One of the above constants. Note that fake instructions carry no arguments;
+        // these should be encoded in the opcode itself.
+        rejit_bmp_char_t opcode;
+        // ID of the next instruction in `re2::Prog` to evaluate.
+        ssize_t out;
+    };
+
+
     #if RE2JIT_NO_EXTCODES
         static inline const re2::StringPiece& rewrite(const re2::StringPiece &r) { return r; }
+
+        /* Execute a statement in the context of handling an instruction.
+         *
+         * @param var: name of the variable to store the instruction in.
+         * @param prog: `re2::Prog *` to read instructions out of.
+         * @param i: index of the current instruction.
+         * @param ext: stmt to execute if the instruction is a re2jit extension
+         *             (type of `var` is `re2jit::opcode`).
+         * @param normal: stmt to execute if the instruction is a re2 opcode
+         *                (type of `var` is `re2::Prog::Inst *`).
+         *
+         */
+        #define RE2JIT_WITH_INST(var, prog, i, ext, normal) do { \
+            auto var = (prog)->inst(i);                          \
+            normal;                                              \
+        } while (0)
     #else
+        static thread_local struct
+        {
+            char  *buf;
+            size_t len;
+        } _storage = { NULL, 0 };
+
+
+        static inline char *allocate_rewrite(const re2::StringPiece &regexp)
+        {
+            delete[] _storage.buf;
+            _storage.len = regexp.size();
+            _storage.buf = new char[_storage.len];
+            memcpy(_storage.buf, regexp.data(), _storage.len);
+            return _storage.buf;
+        }
+
+
         /* Rewrite a regular expression, replacing some syntax not supported by re2
          * with placeholders which our NFA implementations can then handle their own way.
          *
@@ -20,31 +70,73 @@ namespace re2jit
          * passed to re2's constructor and then discarded, everything will be fine.
          *
          */
-        const re2::StringPiece rewrite(const re2::StringPiece&);
-
-
-        #define _opcode(n, v) static constexpr const rejit_bmp_char_t n = SURROGATE_L + v;
-        _opcode(MATCH_UNICODE_CLASS_START, 0);
-        _opcode(MATCH_UNICODE_LETTER,      0);
-        _opcode(MATCH_UNICODE_NUMBER,      1);
-        _opcode(MATCH_UNICODE_CLASS_END,   1);
-        #undef _opcode
-
-
-        struct fake_inst
+        static inline const re2::StringPiece rewrite(const re2::StringPiece& regexp)
         {
-            // One of the above constants. Note that fake instructions carry no arguments;
-            // these should be encoded in the opcode itself.
-            rejit_bmp_char_t op;
-            // ID of the next instruction in `re2::Prog` to evaluate.
-            ssize_t out;
+            const char *src = regexp.data();
+            const char *end = regexp.size() + src;
 
-            operator bool () const { return op != 0; }
-            bool operator == (rejit_bmp_char_t c) const { return op == c; }
-            bool operator != (rejit_bmp_char_t c) const { return op != c; }
-            bool operator >= (rejit_bmp_char_t c) const { return op >= c; }
-            bool operator <= (rejit_bmp_char_t c) const { return op <= c; }
-        };
+            char *dst = NULL;
+
+            for (; src != end; src++) {
+                if (*src == '\\') {
+                    if (++src == end)
+                        // unexpected EOF after escape character
+                        return regexp;
+
+                    if (dst) dst++;
+
+                    #define REWRITE(ch, new_src)                                        \
+                        do {                                                            \
+                            if (dst == NULL)                                            \
+                                dst = allocate_rewrite(regexp) + (src - regexp.data()); \
+                                                                                        \
+                            dst -= 1;                                                   \
+                            int len = rejit_write_utf8((uint8_t *) dst, ch);            \
+                            dst += len - 1;                                             \
+                            _storage.len -= new_src - src - len + 2;                    \
+                            memcpy(dst + 1, (src = new_src) + 1, end - new_src - 1);    \
+                        } while (0)
+
+                    switch (*src)
+                    {
+                        case 'p':
+                            // '\p{kind}' -- match a whole Unicode character class
+                            const char *lparen = src;
+
+                            if (++lparen == end || *lparen != '{')
+                                goto done;
+
+                            const char *rparen = lparen;
+
+                            while (*rparen != '}')
+                                if (++rparen == end)
+                                    goto done;
+
+                            switch (rparen - (++lparen))  // i.e. length of class identifier
+                            {
+                                case 1: switch (*lparen)
+                                {
+                                    case 'L':
+                                        REWRITE(opcode::kUnicodeLetter, rparen);
+                                        goto done;
+
+                                    case 'N':
+                                        REWRITE(opcode::kUnicodeNumber, rparen);
+                                        goto done;
+
+                                    // TODO other classes?
+                                }
+                            }
+
+                            break;
+                    }
+                }
+
+                done: if (dst) dst++;
+            }
+
+            return dst ? re2::StringPiece{ _storage.buf, (int) _storage.len } : regexp;
+        }
 
 
         /* Check whether the i-th opcode of a re2 program is actually a fake instruction
@@ -53,7 +145,68 @@ namespace re2jit
          * instructions to apply; if at least one matches, then this opcode matched.
          * If not, the list is empty.
          */
-        std::vector<fake_inst> is_extcode(re2::Prog *p, ssize_t i);
+        static inline std::vector<opcode> is_extcode(re2::Prog *p, ssize_t i)
+        {
+            re2::Prog::Inst *in = p->inst(i);
+
+            // (SURROGATE_L .. SURROGATE_H) in UTF-8 = 0xED 0xB3 0xXX where 0xXX & 0xC0 == 0x80.
+            if (in->opcode() != re2::kInstByteRange || in->hi() != 0xED || in->lo() != 0xED)
+                return std::vector<opcode>{};
+
+            in = p->inst(in->out());
+
+            if (in->opcode() != re2::kInstByteRange || in->hi() != 0xB3 || in->lo() != 0xB3)
+                return std::vector<opcode>{};
+
+            // The third one is tricky. It can be a choice between any `kInstByteRange`s
+            // where both limits are UTF-8 continuation bytes.
+            ssize_t stack[128];
+            ssize_t stptr = 0;
+            stack[stptr++] = in->out();
+            std::vector<opcode> rs;
+
+            while (stptr--) {
+                in = p->inst(stack[stptr]);
+
+                switch (in->opcode()) {
+                    case re2::kInstAlt:
+                    case re2::kInstAltMatch:
+                        stack[stptr++] = in->out1();
+                        stack[stptr++] = in->out();
+                        break;
+
+                    case re2::kInstByteRange: {
+                        rejit_bmp_char_t a = in->lo();
+                        rejit_bmp_char_t b = in->hi();
+
+                        if ((a & 0xC0) == 0x80 && (b & 0xC0) == 0x80) {
+                            for (; a <= b; a++) {
+                                rs.push_back(opcode { (rejit_bmp_char_t) (SURROGATE_L + (a & 0x3F)), in->out() });
+                            }
+
+                            break;
+                        }
+                    }
+
+                    default:
+                        // regexp can match junk in the middle of characters. not good.
+                        return std::vector<opcode>{};
+                }
+            }
+
+            return rs;
+        }
+
+
+        #define RE2JIT_WITH_INST(var, prog, i, ext, normal) do { \
+            auto __ins = re2jit::is_extcode(prog, i);            \
+            if (__ins.size()) {                                  \
+                for (auto var : __ins) ext;                      \
+            } else {                                             \
+                auto var = (prog)->inst(i);                      \
+                normal;                                          \
+            }                                                    \
+        } while (0)
     #endif
 };
 

@@ -39,8 +39,7 @@ _require_headers = \
 _require_objects = \
 	obj/it.o \
 	obj/debug.o \
-	obj/threads.o \
-	obj/rewriter.o
+	obj/threads.o
 
 
 _require_platform_code = \
