@@ -24,7 +24,8 @@
 #define MOVQ_IMM_RSI(p) INSCODE(0x48, 0xBE, IMM64(p))
 #define MOVQ_TBL_RSI(p) INSBACK(p, 2); MOVQ_IMM_RSI(0ULL)
 
-// mov r64, r64
+// mov r32/64, r32/64
+#define MOVL_EAX_EAX() INSCODE(      0x89, 0xC0)
 #define MOVQ_RAX_RDX() INSCODE(0x48, 0x89, 0xC2)
 
 // mov m64=8/32(r64), r8/32/64
@@ -46,6 +47,9 @@
 #define CMPB_IMM_MRDI(imm, d) INSCODE(0x83, 0x7F, IMM8(d, 0), IMM8(imm, 0))
 #define CMPL_IMM_MRDI(imm, d) INSCODE(0x81, 0x7F, IMM8(d, 0), IMM32(imm))
 
+// add r64, r64
+#define ADDQ_RSI_RAX() INSCODE(0x48, 0x01, 0xF0)
+
 // add/sub imm8, r8
 #define ADDB_IMM__CL(p) INSCODE(0x80, 0xC1, IMM8(p, 0))
 #define SUBB_IMM__CL(p) INSCODE(0x80, 0xE9, IMM8(p, 0))
@@ -61,13 +65,16 @@
 #define TEST_EAX_EAX(p) INSCODE(0x85, 0xC0)
 
 // test imm8, m8=imm32(r64)
-#define TEST_IMMB_MRSI(imm, d) INSCODE(0xF6, 0x86, IMM32(d), IMM8(imm, 0))
+#define TEST_IMMB_MRSI(p, d) INSCODE(0xF6, 0x86, IMM32(d), IMM8(p, 0))
 
 // xor r32, r32
 #define XORL_EAX_EAX() INSCODE(0x31, 0xC0)
 
+// and imm8, r8
+#define ANDB_IMM__CL(p) INSCODE(0x80, 0xE1, IMM8(p, 0))
+
 // or imm8, m8=imm32(r64)
-#define ORB_IMM_MRSI(imm, d) INSCODE(0x80, 0x8E, IMM32(d), IMM8(imm, 0))
+#define ORB_IMM_MRSI(p, d) INSCODE(0x80, 0x8E, IMM32(d), IMM8(p, 0))
 
 // stack r64
 #define PUSH_RSI() INSCODE(0x56)

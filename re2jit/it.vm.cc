@@ -51,7 +51,19 @@ struct re2jit::native
                                 // not a valid utf-8 character
                                 break;
 
-                            // TODO check the class of `x & 0xFFFFFFFF`
+                            rejit_uni_type_t cls = UNICODE_CODEPOINT_TYPE[x & 0xFFFFFFFF];
+                            rejit_uni_type_t expect;
+
+                            switch (op.opcode) {
+                                case re2jit::opcode::kUnicodeLetter: expect = UNICODE_TYPE_L; break;
+                                case re2jit::opcode::kUnicodeNumber: expect = UNICODE_TYPE_N; break;
+                            }
+
+                            if ((cls & UNICODE_GENERAL) != expect) {
+                                re2jit::debug::write("re2jit::vm: class mismatch: %x vs %x\n", cls, expect);
+                                break;
+                            }
+
                             rejit_thread_wait(nfa, op.out, x >> 32);
                             break;
                         }

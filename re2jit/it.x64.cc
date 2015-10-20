@@ -150,7 +150,27 @@ struct re2jit::native
                         SHRQ_IMM_RDX(32);
                         //    ret [if ==]
                         RETQ_IF(JMP_ZERO);
-                        // TODO check the class of %eax
+
+                        rejit_uni_type_t expect;
+                        switch (op.opcode) {
+                            case re2jit::opcode::kUnicodeLetter: expect = UNICODE_TYPE_L; break;
+                            case re2jit::opcode::kUnicodeNumber: expect = UNICODE_TYPE_N; break;
+                        }
+
+                        //    mov %eax, %eax  <-- zero upper 32 bits
+                        MOVL_EAX_EAX();
+                        //    mov UNICODE_CODEPOINT_TYPE, %rsi  <-- no `add imm64, r64`
+                        MOVQ_IMM_RSI((uint64_t) UNICODE_CODEPOINT_TYPE);
+                        //    add %rsi, %rax
+                        ADDQ_RSI_RAX();
+                        //    mov (%rax), %cl
+                        MOV__MRAX__CL();
+                        //    and UNICODE_GENERAL, %cl
+                        ANDB_IMM__CL(UNICODE_GENERAL);
+                        //    cmp expect, %cl
+                        CMPB_IMM__CL(expect);
+                        //    ret [if !=]
+                        RETQ_IF(JMP_NE);
                         //    mov code+vtable[out], %rsi
                         MOVQ_TBL_RSI(op.out);
                         //    jmp rejit_thread_wait
