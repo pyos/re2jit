@@ -1,8 +1,9 @@
 CXX      ?= g++
 CXXFLAGS ?= -O3 -Wall -Wextra -Werror
 
-ENABLE_FALLBACK    ?= 1
-ENABLE_NEW_OPCODES ?= 1
+ENABLE_FALLBACK     ?= 1
+ENABLE_NEW_OPCODES  ?= 1
+ENABLE_DFA_FASTPATH ?= 8192
 
 ifeq ($(FORCE_VM),1)
 _options += -DRE2JIT_VM
@@ -10,6 +11,7 @@ endif
 
 ifeq ($(ENABLE_DEBUG),1)
 _options += -DRE2JIT_DEBUG
+_testopt += -DRE2JIT_DEBUG
 endif
 
 ifneq ($(ENABLE_FALLBACK),1)
@@ -20,8 +22,12 @@ ifneq ($(ENABLE_NEW_OPCODES),1)
 _options += -DRE2JIT_NO_EXTCODES
 endif
 
+ifneq ($(ENABLE_DFA_FASTPATH),0)
+_options += -DRE2JIT_USE_RE2_DFA=$(ENABLE_DFA_FASTPATH)
+endif
+
 ifeq ($(ENABLE_PERF_TESTS),1)
-_options += -DRE2JIT_DO_PERF_TESTS
+_testopt += -DRE2JIT_DO_PERF_TESTS
 endif
 
 _require_vendor = \
@@ -70,7 +76,8 @@ INSTALL = install -D
 PYTHON3 = /usr/bin/python3
 CCFLAGS = ./ccflags
 DYNLINK = $(CC) -shared -o
-COMPILE = $(CXX) $(CXXFLAGS) $(_options) -std=c++11 -fPIC -I. -I./re2 -L./obj -L./re2/obj
+COMPILE = $(CXX) $(CXXFLAGS) $(_options) -std=c++11 -I. -I./re2 -L./obj -L./re2/obj -fPIC
+CMPTEST = $(CXX) $(CXXFLAGS) $(_testopt) -std=c++11 -I. -I./re2 -L./obj -L./re2/obj -pthread
 
 
 .PHONY: all clean test test/%
@@ -124,4 +131,4 @@ obj/%.o: re2jit/%.cc $(_require_headers)
 
 obj/test/%: test/%.cc test/%.h test/framework.cc $(_require_library) $(_require_vendor)
 	@mkdir -p $(dir $@)
-	$(COMPILE) -DTEST=$< -DTESTH=$(basename $<).h -pthread -o $@ test/framework.cc `$(CCFLAGS) $(basename $<).h` -lre2jit -lre2
+	$(CMPTEST) -DTEST=$< -DTESTH=$(basename $<).h -o $@ test/framework.cc `$(CCFLAGS) $(basename $<).h` -lre2jit -lre2

@@ -51,6 +51,7 @@ namespace re2jit
         protected:
             native    *_native;
             re2::Prog *_bytecode;
+            RE2       *_original;  // before rewriting
     };
 };
 

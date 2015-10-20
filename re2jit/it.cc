@@ -26,6 +26,9 @@ namespace re2jit
     it::it(const re2::StringPiece& pattern) : it(pattern, RE2::Quiet) {}
     it::it(const re2::StringPiece& pattern, const RE2::Options& options)
         : RE2(options.encoding() == Options::EncodingUTF8 ? rewrite(pattern) : pattern, options)
+        #if RE2JIT_USE_RE2_DFA
+            , _original(new RE2(pattern, options))
+        #endif
     {
         if (RE2::ok()) {
             // May fail, but highly unlikely -- `RE2::Init` already compiled it.
@@ -42,6 +45,10 @@ namespace re2jit
             delete _native;
             delete _bytecode;
         }
+
+        #if RE2JIT_USE_RE2_DFA
+            delete _original;
+        #endif
     }
 
 
@@ -53,6 +60,19 @@ namespace re2jit
             flags |= RE2JIT_ANCHOR_START;
         if (_bytecode->anchor_end() || anchor == RE2::ANCHOR_BOTH)
             flags |= RE2JIT_ANCHOR_END;
+
+        #if RE2JIT_USE_RE2_DFA
+            if (!(flags & RE2JIT_ANCHOR_START) && text.size() > RE2JIT_USE_RE2_DFA) {
+                // Use re2's fast DFA to locate the match first, then
+                // run our NFA anchored to the result.
+                re2::StringPiece found;
+
+                if (!_original->Match(text, 0, text.size(), RE2::UNANCHORED, &found, 1))
+                    return 0;
+
+                return it::match(found, RE2::ANCHOR_BOTH, match, nmatch);
+            }
+        #endif
 
         struct rejit_threadset_t nfa;
         // A-a-a-and C++ is worse than C99.
