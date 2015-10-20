@@ -1,14 +1,6 @@
 #include <deque>
 #include <vector>
-
-#include <stdint.h>
-#include <stddef.h>
 #include <sys/mman.h>
-
-#include "it.h"
-#include "debug.h"
-#include "threads.h"
-#include "rewriter.h"
 
 #include "it.x64.asm.h"
 
@@ -25,7 +17,7 @@ struct re2jit::native
     void *_entry;
     size_t _size;
 
-    native(re2::Prog *prog)
+    native(re2::Prog *prog) : _code(NULL), _entry(NULL), _size(0)
     {
         size_t i;
         size_t n = prog->size();
@@ -348,16 +340,14 @@ struct re2jit::native
             return;
         }
 
-        _size  = code.size();
         _code  = target;
         _entry = target + vtable[prog->start()];
+        _size  = code.size();
     }
 
    ~native()
     {
-        if (_code) {
-            munmap(_code, _size);
-        }
+        munmap(_code, _size);
     }
 
     rejit_entry_t entry() const
@@ -365,13 +355,8 @@ struct re2jit::native
         return (rejit_entry_t) _entry;
     }
 
-    int run(struct rejit_threadset_t *nfa) const
+    void run(struct rejit_threadset_t *nfa) const
     {
-        if (!_code) {
-            return 0;
-        }
-
         rejit_thread_dispatch(nfa);
-        return 1;
-    };
+    }
 };

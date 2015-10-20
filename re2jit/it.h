@@ -1,6 +1,8 @@
 #ifndef RE2JIT_IT_H
 #define RE2JIT_IT_H
 
+#include <string>
+
 #include <re2/re2.h>
 #include <re2jit/debug.h>
 
@@ -9,11 +11,16 @@ namespace re2jit
 {
     struct native;
 
-    struct it : public RE2
+    struct it
     {
         it(const re2::StringPiece&);
-        it(const re2::StringPiece&, const RE2::Options&);
        ~it();
+
+        /* Find out whether the constructor finished successfully.
+         * If not, `error()` should return a short description. */
+        bool ok() const { return _error.size() == 0; }
+
+        const std::string& error() const { return _error; }
 
         /* Attempt to match a string.
          *
@@ -42,16 +49,21 @@ namespace re2jit
          *
          * @param nmatch: length of `match`.
          *
-         * @return: the name of the group, NULL if no group matched or the outermost
+         * @return: the name of the group, "" if no group matched or the outermost
          *          matching group has no name (i.e. is not a `(?P<name>...)` group).
          *
          */
-        const char *lastgroup(const re2::StringPiece *match, int nmatch) const;
+        std::string lastgroup(const re2::StringPiece *match, int nmatch) const;
 
         protected:
-            native    *_native;
-            re2::Prog *_bytecode;
-            RE2       *_original;  // before rewriting
+            native        *_native;
+            re2::RE2      *_original;
+            re2::Prog     *_bytecode;
+            re2::Regexp   *_regexp;
+            std::string    _pattern;
+            std::string    _pattern2;
+            std::string    _error;
+            bool           _pure_re2;
     };
 };
 

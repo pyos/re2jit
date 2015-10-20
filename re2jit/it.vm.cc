@@ -1,7 +1,3 @@
-#include "it.h"
-#include "debug.h"
-#include "threads.h"
-#include "rewriter.h"
 #define STACK_SIZE 1024
 
 
@@ -14,7 +10,7 @@ struct re2jit::native
         return _prog->start();
     }
 
-    int run(struct rejit_threadset_t *nfa) const
+    void run(struct rejit_threadset_t *nfa) const
     {
         ssize_t stack[STACK_SIZE];
         ssize_t stkid;
@@ -125,17 +121,14 @@ struct re2jit::native
 
                             break;
 
-                        case re2::kInstFail:
-                            break;
-
                         default:
                             re2jit::debug::write("re2jit::vm: unknown opcode %d\n", op->opcode());
-                            return 0;
+
+                        case re2::kInstFail:
+                            break;
                     }
                 );
             }
         }
-
-        return 1;
     }
 };

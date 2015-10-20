@@ -1,29 +1,17 @@
 CXX      ?= g++
 CXXFLAGS ?= -O3 -Wall -Wextra -Werror
 
-ENABLE_FALLBACK     ?= 1
-ENABLE_NEW_OPCODES  ?= 1
-ENABLE_DFA_FASTPATH ?= 8192
+ENABLE_VM         ?= 0
+ENABLE_DEBUG      ?= 0
+ENABLE_PERF_TESTS ?= 0
 
-ifeq ($(FORCE_VM),1)
+ifeq ($(ENABLE_VM),1)
 _options += -DRE2JIT_VM
 endif
 
 ifeq ($(ENABLE_DEBUG),1)
 _options += -DRE2JIT_DEBUG
 _testopt += -DRE2JIT_DEBUG
-endif
-
-ifneq ($(ENABLE_FALLBACK),1)
-_options += -DRE2JIT_NO_FALLBACK
-endif
-
-ifneq ($(ENABLE_NEW_OPCODES),1)
-_options += -DRE2JIT_NO_EXTCODES
-endif
-
-ifneq ($(ENABLE_DFA_FASTPATH),0)
-_options += -DRE2JIT_USE_RE2_DFA=$(ENABLE_DFA_FASTPATH)
 endif
 
 ifeq ($(ENABLE_PERF_TESTS),1)
@@ -67,6 +55,7 @@ _require_test_run = \
 	test/12-branching \
 	test/13-exponential \
 	test/20-submatching \
+	test/21-lastgroup \
 	test/30-long \
 	test/31-unicode
 
