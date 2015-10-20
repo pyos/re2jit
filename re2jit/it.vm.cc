@@ -55,6 +55,7 @@ struct re2jit::native
 
                             // TODO check the class of `c`
                             rejit_thread_wait(nfa, op.out, len);
+                            break;
                         }
 
                         default:
