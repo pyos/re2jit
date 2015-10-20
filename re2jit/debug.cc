@@ -6,7 +6,7 @@
    Not defining this in another compilation unit will make it use empty
    inline definitions instead of the ones in this file, effectively turning off
    debugging for that unit. */
-#define RE2JIT_DEBUG
+#define RE2JIT_DEBUG 1
 #endif
 
 #include "debug.h"

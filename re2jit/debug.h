@@ -7,7 +7,7 @@ namespace re2jit
 {
     struct debug
     {
-        #ifdef RE2JIT_DEBUG
+        #if RE2JIT_DEBUG
             debug();
             static void write(const char *, ...);
             static void clear();
