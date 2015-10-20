@@ -1,6 +1,8 @@
 #ifndef RE2JIT_REWRITER_H
 #define RE2JIT_REWRITER_H
 
+#include <vector>
+
 #include <re2/re2.h>
 #include <re2jit/unicode.h>
 
@@ -21,7 +23,7 @@ namespace re2jit
         const re2::StringPiece rewrite(const re2::StringPiece&);
 
 
-        #define _opcode(n, v) static constexpr const rejit_bmp_char_t n = PRIVATE_USE_L + v;
+        #define _opcode(n, v) static constexpr const rejit_bmp_char_t n = SURROGATE_L + v;
         _opcode(MATCH_UNICODE_CLASS_START, 0);
         _opcode(MATCH_UNICODE_LETTER,      0);
         _opcode(MATCH_UNICODE_NUMBER,      1);
@@ -37,18 +39,21 @@ namespace re2jit
             // ID of the next instruction in `re2::Prog` to evaluate.
             ssize_t out;
 
-            /* Check whether the i-th opcode of a re2 program is actually a fake instruction
-             * inserted by `rewrite`, meaning it is a start of a sequence of instruction
-             * that match a Unicode private use character. If not, the struct is zeroed.
-             */
-            fake_inst(re2::Prog *p, ssize_t i);
-
             operator bool () const { return op != 0; }
             bool operator == (rejit_bmp_char_t c) const { return op == c; }
             bool operator != (rejit_bmp_char_t c) const { return op != c; }
             bool operator >= (rejit_bmp_char_t c) const { return op >= c; }
             bool operator <= (rejit_bmp_char_t c) const { return op <= c; }
         };
+
+
+        /* Check whether the i-th opcode of a re2 program is actually a fake instruction
+         * inserted by `rewrite`, meaning it is a start of a sequence of instruction
+         * that match a Unicode private use character. If yes, returns the list of
+         * instructions to apply; if at least one matches, then this opcode matched.
+         * If not, the list is empty.
+         */
+        std::vector<fake_inst> is_extcode(re2::Prog *p, ssize_t i);
     #endif
 };
 

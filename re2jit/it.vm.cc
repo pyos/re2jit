@@ -44,9 +44,9 @@ struct re2jit::native
                 nfa->visited[i / 8] |= 1 << (i % 8);
 
                 #if !RE2JIT_NO_EXTCODES
-                    re2jit::fake_inst f{_prog, i};
+                    std::vector<re2jit::fake_inst> fs = re2jit::is_extcode(_prog, i);
 
-                    if (f) {
+                    if (fs.size()) for (auto f : fs) {
                         if (f >= re2jit::MATCH_UNICODE_CLASS_START && f <= re2jit::MATCH_UNICODE_CLASS_END) {
                             rejit_uni_char_t c;
 

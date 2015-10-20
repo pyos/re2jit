@@ -94,29 +94,56 @@
         }
 
 
-        fake_inst::fake_inst(re2::Prog *p, ssize_t i) : op(0), out(0)
+        std::vector<fake_inst> is_extcode(re2::Prog *p, ssize_t i)
         {
             re2::Prog::Inst *in = p->inst(i);
 
-            // 3 bytes are enough as we only use the BMP Private Use Area.
-            uint8_t buf[3], *bptr = buf;
-            ssize_t out[3], *optr = out;
+            // (SURROGATE_L .. SURROGATE_H) in UTF-8 = 0xED 0xB3 0xXX where 0xXX & 0xC0 == 0x80.
+            if (in->opcode() != re2::kInstByteRange || in->hi() != 0xED || in->lo() != 0xED)
+                return std::vector<fake_inst>{};
 
-            rejit_uni_char_t chr;
+            in = p->inst(in->out());
 
-            // Only interested in opcodes that match a single byte.
-            while (in->opcode() == re2::kInstByteRange && in->hi() == in->lo() && bptr != buf + 3) {
-                *bptr++ = in->lo();
-                *optr++ = in->out();
-                in = p->inst(in->out());
+            if (in->opcode() != re2::kInstByteRange || in->hi() != 0xB3 || in->lo() != 0xB3)
+                return std::vector<fake_inst>{};
+
+            // The third one is tricky. It can be a choice between any `kInstByteRange`s
+            // where both limits are UTF-8 continuation bytes.
+            ssize_t stack[128];
+            ssize_t stptr = 0;
+            stack[stptr++] = in->out();
+            std::vector<fake_inst> rs;
+
+            while (stptr--) {
+                in = p->inst(stack[stptr]);
+
+                switch (in->opcode()) {
+                    case re2::kInstAlt:
+                    case re2::kInstAltMatch:
+                        stack[stptr++] = in->out1();
+                        stack[stptr++] = in->out();
+                        break;
+
+                    case re2::kInstByteRange: {
+                        rejit_bmp_char_t a = in->lo();
+                        rejit_bmp_char_t b = in->hi();
+
+                        if ((a & 0xC0) == 0x80 && (b & 0xC0) == 0x80) {
+                            for (; a <= b; a++) {
+                                rs.push_back(fake_inst { (rejit_bmp_char_t) (SURROGATE_L + (a & 0x3F)), in->out() });
+                            }
+
+                            break;
+                        }
+                    }
+
+                    default:
+                        // regexp can match junk in the middle of characters. not good.
+                        return std::vector<fake_inst>{};
+                }
             }
 
-            int len = rejit_read_utf8(buf, bptr - buf, &chr);
-
-            if (len != -1 && PRIVATE_USE_L <= chr && chr <= PRIVATE_USE_H) {
-                this->op  = (rejit_bmp_char_t) chr;
-                this->out = out[len - 1];
-            }
+            return rs;
         }
     };
 #endif

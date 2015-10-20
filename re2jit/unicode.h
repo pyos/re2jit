@@ -9,11 +9,15 @@ extern "C" {
     typedef uint32_t rejit_uni_char_t;
 
 
-    // There are 6400 characters in the BMP Private Use Area of Unicode. We'll repurpose
-    // them as makeshift "opcodes" -- if a series of instructions matches a private use
-    // character, that means we should ignore them and instead do something completely different.
-    static constexpr const rejit_bmp_char_t PRIVATE_USE_L = 0xE000u;
-    static constexpr const rejit_bmp_char_t PRIVATE_USE_H = 0xF8FFu;
+    // There's a range of unused characters at U+D800 through U+DFFF.
+    // These are UTF-16 surrogate characters, intended to be used to address
+    // code points higher than U+FFFF through pairs of 16-bit numbers. Technically,
+    // in UTF-8 a sequence of bytes that decodes to a surrogate is invalid; re2 doesn't
+    // care, though, so whatever. We'll use 64 of them as makeshift opcodes.
+    static constexpr const rejit_bmp_char_t SURROGATE_L = 0xDCC0u;
+    static constexpr const rejit_bmp_char_t SURROGATE_H = 0xDCFFu;
+    // In UTF-8, all characters that fall in this range are encoded as 0xED 0xB3 0xXX
+    // where 0xXX & 0xC0 == 0x80.
 
 
     /* Attempt to read a single UTF-8 character from a buffer. On success,
