@@ -30,6 +30,8 @@
     test_case(name) {                                                                         \
         RE2 r2(regex);                                                                        \
         re2jit::it rj(regex);                                                                 \
+        if (!r2.ok()) return Result::Fail("[re2] %s", r2.error().c_str());                    \
+        if (!rj.ok()) return Result::Fail("[jit] %s", rj.error().c_str());                    \
         const char input[] = _input;                                                          \
                                                                                               \
         re2::StringPiece r2groups[ngroups], rjgroups[ngroups];                                \
