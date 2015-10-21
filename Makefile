@@ -101,6 +101,11 @@ re2jit/unicodedata.h: re2jit/unicodedata.py
 re2jit/unicodedata.cc: re2jit/unicodedata.h
 
 
+obj/unicodedata.o: re2jit/unicodedata.cc
+	@mkdir -p $(dir $@)
+	$(COMPILE) -c -o $@ $<
+
+
 obj/libre2jit.a: $(_require_objects)
 	$(ARCHIVE) $@ $^
 
