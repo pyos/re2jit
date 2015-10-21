@@ -1,4 +1,3 @@
-#include <deque>
 #include <vector>
 #include <sys/mman.h>
 
@@ -36,60 +35,42 @@ struct re2jit::native
         XORL_EAX_EAX();
         RETQ();
 
-        // States not reachable from the entry point don't need to be compiled. Duh.
-        std::vector< bool > reachable(n);
-        // Whether multiple transitions have the i-th opcode as a target. We have to maintain
+        // How many transitions have the i-th opcode as a target. We have to maintain
         // a bit vector of visited states to avoid going into an infinite loop; however,
         // opcodes with indegree 1 can never be at the start of a loop, so we can avoid
         // some memory lookups on these.
-        std::vector< bool > is_a_loop(n);
+        std::vector< unsigned > indegree(n);
 
-        {
-            std::deque< size_t > visit;
-            visit.push_back(prog->start());
-            reachable[prog->start()] = true;
+        ssize_t *stack = new ssize_t[prog->size()];
+        ssize_t *stptr = stack;
+        indegree[*stptr++ = prog->start()]++;
 
-            while (!visit.empty()) {
-                i = visit.front();
-                visit.pop_front();
+        while (stptr != stack)
+            RE2JIT_WITH_INST(op, prog, *--stptr,
+                // re2jit::inst *
+                if (!indegree[op->out()]++)
+                    *stptr++ = op->out();
 
-                RE2JIT_WITH_INST(op, prog, i,
-                    // re2jit::inst *
-                    if (!reachable[op->out()]) {
-                        reachable[op->out()] = true;
-                        visit.push_back(op->out());
-                    } else {
-                        is_a_loop[op->out()] = true;
-                    },
+                // re2::Prog::Inst *
+              , switch (op->opcode()) {
+                    case re2::kInstAlt:
+                    case re2::kInstAltMatch:
+                        if (!indegree[op->out1()]++)
+                            *stptr++ = op->out1();
 
-                    // re2::Prog::Inst *
-                    switch (op->opcode()) {
-                        case re2::kInstAlt:
-                        case re2::kInstAltMatch:
-                            if (!reachable[op->out1()]) {
-                                reachable[op->out1()] = true;
-                                visit.push_back(op->out1());
-                            } else {
-                                is_a_loop[op->out1()] = true;
-                            }
+                    default:
+                        if (!indegree[op->out()]++)
+                            *stptr++ = op->out();
 
-                        default:
-                            if (!reachable[op->out()]) {
-                                reachable[op->out()] = true;
-                                visit.push_back(op->out());
-                            } else {
-                                is_a_loop[op->out()] = true;
-                            }
+                    case re2::kInstFail:
+                    case re2::kInstMatch:
+                        break;
+                }
+            );
 
-                        case re2::kInstFail:
-                        case re2::kInstMatch:
-                            break;
-                    }
-                );
-            }
-        }
+        delete[] stack;
 
-        for (i = 0; i < n; i++) if (reachable[i]) {
+        for (i = 0; i < n; i++) if (indegree[i]) {
             vtable[i] = code.size();
 
             // Each opcode should conform to System V ABI calling convention.
@@ -99,7 +80,7 @@ struct re2jit::native
             //   %rax :: int -- 1 if found a match, 0 otherwise
 
             // kInstFail will do `ret` anyway.
-            if (prog->inst(i)->opcode() != re2::kInstFail && is_a_loop[i]) {
+            if (prog->inst(i)->opcode() != re2::kInstFail && indegree[i] > 1) {
                 //    mov (%rdi).visited, %rsi
                 MOVB_MRDI_RSI(offsetof(struct rejit_threadset_t, visited));
                 //    test 1<<(i%8), %rsi[i / 8]
