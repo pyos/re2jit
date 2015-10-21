@@ -56,6 +56,33 @@ struct re2jit::native
                             break;
                         }
 
+                        case re2jit::inst::kBackReference: {
+                            if (op->arg() * 2 >= nfa->groups)
+                                // no idea what that group matched
+                                break;
+
+                            int start = t->groups[op->arg() * 2];
+                            int end   = t->groups[op->arg() * 2 + 1];
+
+                            if (start == -1 || end < start)
+                                // unmatched group.
+                                break;
+
+                            if (start == end) {
+                                stack[stkid++] = op->out();
+                                break;
+                            }
+
+                            if (nfa->length < (size_t) (end - start))
+                                break;
+
+                            if (memcmp(nfa->input, nfa->input - nfa->offset + start, end - start))
+                                break;
+
+                            rejit_thread_wait(nfa, op->out(), end - start);
+                            break;
+                        }
+
                         default:
                             re2jit::debug::write("re2jit::vm: unknown extcode %hu\n", op->opcode());
                             break;

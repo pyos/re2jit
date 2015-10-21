@@ -146,6 +146,60 @@ struct re2jit::native
                         break;
                     }
 
+                    case re2jit::inst::kBackReference: {
+                        //    cmp arg*2, (%rdi).groups
+                        CMPL_IMM_MRDI(op->arg() * 2, offsetof(struct rejit_threadset_t, groups));
+                        //    ret [if <=]  <-- wan't enough space to record that group
+                        RETQ_IF(JMP_LE_U);
+
+                        //    mov (%rdi).running, %rsi
+                        MOVB_MRDI_RSI(offsetof(struct rejit_threadset_t, running));
+                        //    mov (%rsi).groups[arg*2], %eax
+                        MOVL_MRSI_EAX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * (op->arg() * 2));
+                        //    mov (%rsi).groups[arg*2+1], %ecx
+                        MOVL_MRSI_ECX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * (op->arg() * 2 + 1));
+
+                        //    cmp $-1, %eax
+                        CMPB_IMM_EAX(0xFF);
+                        //    ret [if ==]
+                        RETQ_IF(JMP_EQ);
+
+                        //    sub %eax, %ecx
+                        SUBL_EAX_ECX();
+                        //    ret [if <]
+                        RETQ_IF(JMP_LT);
+                        //    je code+vtable[out]
+                        JMP_TBL(JMP_EQ, op->out());
+                        //    mov %ecx, %edx
+                        MOVL_ECX_EDX();
+
+                        //    mov %rdi, %r8
+                        MOVQ_RDI_R8_();
+                        //    mov (%r8).input, %rdi
+                        MOVB_MR8__RDI(offsetof(struct rejit_threadset_t, input));
+                        //    mov %rdi, %rsi
+                        MOVQ_RDI_RSI();
+                        //    sub (%r8).offset, %rsi
+                        SUBB_MR8__RSI(offsetof(struct rejit_threadset_t, offset));
+                        //    add %rax, %rsi
+                        ADDQ_RAX_RSI();
+                        //    repz cmpsb
+                        //    ^    ^-- compare bytes at (%rdi) and (%rsi), increment both
+                        //    \-- repeat while ZF is set and %rcx is non-zero
+                        //    Essentially, this opcode is `ZF, SF = memcmp(%rdi, %rsi, %rcx)`.
+                        REPZ_CMPSB();
+                        //    mov %r8, %rdi
+                        MOVQ_R8__RDI();
+                        //    ret [if !=]
+                        RETQ_IF(JMP_NE);
+
+                        //    mov code+vtable[out], %rsi
+                        MOVQ_TBL_RSI(op->out());
+                        //    jmp rejit_thread_wait
+                        JMPL_IMM(&rejit_thread_wait);
+                        break;
+                    }
+
                     default:
                         re2jit::debug::write("re2jit::x64: unknown extcode %hu\n", op->opcode());
                         RETQ();

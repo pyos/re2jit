@@ -16,6 +16,7 @@ namespace re2jit
         enum OPCODE
         {
             kUnicodeType,
+            kBackReference,
         };
 
         inst(uint8_t opcode, uint16_t arg, ssize_t out) : opcode_(opcode), arg_(arg), out_(out) {}
@@ -74,36 +75,44 @@ namespace re2jit
             if (++src == regexp.end())
                 return false;  // invalid syntax: escape character before EOF
 
-            switch (*src)
-            {
-                case 'p': {
-                    // '\p{kind}' -- match a whole Unicode character class
-                    auto lp = src;
+            if (*src == 'p') {
+                // '\p{kind}' -- match a whole Unicode character class
+                auto lp = src;
 
-                    if (++lp == regexp.end() || *lp != '{')
-                        return false;  // invalid syntax: unicode class with no name
+                if (++lp == regexp.end() || *lp != '{')
+                    return false;  // invalid syntax: unicode class with no name
 
-                    auto rp = lp;
+                auto rp = lp;
 
-                    while (*rp != '}')
-                        if (++rp == regexp.end())
-                            return false;  // invalid syntax: mismatched parenthesis
+                while (*rp != '}')
+                    if (++rp == regexp.end())
+                        return false;  // invalid syntax: mismatched parenthesis
 
-                    ++lp;
+                ++lp;
 
-                    if (rp - lp == 1) switch (*lp)
-                    {
-                        case 'L':
-                            src = _rewrite_step(regexp, src, rp, inst::kUnicodeType, UNICODE_TYPE_L);
-                            break;
+                if (rp - lp == 1) switch (*lp)
+                {
+                    case 'L':
+                        src = _rewrite_step(regexp, src, rp, inst::kUnicodeType, UNICODE_TYPE_L);
+                        break;
 
-                        case 'N':
-                            src = _rewrite_step(regexp, src, rp, inst::kUnicodeType, UNICODE_TYPE_N);
-                            break;
-                    }
-
-                    break;
+                    case 'N':
+                        src = _rewrite_step(regexp, src, rp, inst::kUnicodeType, UNICODE_TYPE_N);
+                        break;
                 }
+            }
+
+            else if (isdigit(*src)) {
+                // \1234 -- backreference to group 1234.
+                auto e = src;
+                int  r = 0;
+
+                for (; e != regexp.end() && isdigit(*e); ++e)
+                    r = r * 10 + (*e - '0');
+
+                src = _rewrite_step(regexp, src, --e, inst::kBackReference, r);
+                // re2 does not support backreferences.
+                is_re2 = false;
             }
         }
 
