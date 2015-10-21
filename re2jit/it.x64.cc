@@ -126,8 +126,7 @@ struct re2jit::native
 
             RE2JIT_WITH_INST(op, prog, i,
                 switch (op->opcode()) {
-                    case re2jit::inst::kUnicodeLetter:
-                    case re2jit::inst::kUnicodeNumber: {
+                    case re2jit::inst::kUnicodeType: {
                         //    push %rdi
                         PUSH_RDI();
                         //    call rejit_thread_read_utf8
@@ -140,11 +139,6 @@ struct re2jit::native
                         SHRQ_IMM_RDX(32);
                         //    ret [if ==]
                         RETQ_IF(JMP_ZERO);
-
-                        rejit_uni_type_t expect =
-                            op->opcode() == re2jit::inst::kUnicodeLetter ? UNICODE_TYPE_L :
-                            op->opcode() == re2jit::inst::kUnicodeNumber ? UNICODE_TYPE_N : 0;
-
                         //    mov %eax, %eax  <-- zero upper 32 bits
                         MOVL_EAX_EAX();
                         //    mov UNICODE_CODEPOINT_TYPE, %rsi  <-- no `add imm64, r64`
@@ -155,8 +149,8 @@ struct re2jit::native
                         MOV__MRAX__CL();
                         //    and UNICODE_GENERAL, %cl
                         ANDB_IMM__CL(UNICODE_GENERAL);
-                        //    cmp expect, %cl
-                        CMPB_IMM__CL(expect);
+                        //    cmp arg, %cl
+                        CMPB_IMM__CL(op->arg());
                         //    ret [if !=]
                         RETQ_IF(JMP_NE);
                         //    mov code+vtable[out], %rsi

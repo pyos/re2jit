@@ -15,20 +15,31 @@ namespace re2jit
     struct inst {
         enum OPCODE
         {
-            kUnicodeLetter = SURROGATE_L,
-            kUnicodeNumber = SURROGATE_L + 1,
+            kUnicodeType,
         };
 
-        inst(ssize_t opcode, ssize_t out) : opcode_(opcode), out_(out) {}
+        inst(uint8_t opcode, uint16_t arg, ssize_t out) : opcode_(opcode), arg_(arg), out_(out) {}
 
-        ssize_t opcode() const { return opcode_; }
-        ssize_t out()    const { return out_; }
+        uint8_t  opcode() const { return opcode_; }
+        uint16_t arg()    const { return arg_; }
+        ssize_t  out()    const { return out_; }
 
         protected:
-            ssize_t opcode_;
-            ssize_t out_;
+            uint8_t  opcode_;
+            uint16_t arg_;
+            ssize_t  out_;
     };
 
+    /* Private Use Area on plane 15: 0xF0000 .. 0xFFFFD. We'll use 0xF0000 .. 0xF0FFF:
+     *
+     *     1111 0000 xxxx xxxx xxxx
+     *     F    0    code \- arg -/
+     *
+     * All UTF-8 points of this form look like 0xF3 0xB0 0xYY 0xYY
+     * where (0xYY & 0xC0) == 0x80.
+     *
+     */
+    static constexpr const rejit_uni_char_t PSEUDOCODE = 0xF0000ull;
 
     /* Single step of a rewriting algorithm: given a string, a pointer to the first
      * character of an escape sequence, and a pointer to the last character of that same
@@ -36,13 +47,13 @@ namespace re2jit
      * byte of that character. */
     static inline std::string::iterator _rewrite_step(std::string& s,
                   std::string::iterator pos,
-                  std::string::iterator end, ssize_t op)
+                  std::string::iterator end, uint8_t op, uint16_t arg)
     {
-        char u8buf[3];
-        int  u8len = rejit_write_utf8((uint8_t *) u8buf, op);
-
+        uint8_t buf[4] = { 0xF3u, 0xB0u,
+                (uint8_t) (0x80u | (op << 2) | (arg >> 6)),
+                (uint8_t) (0x80u | (arg & 0x3Fu)) };
         ssize_t off = pos - s.begin() - 1;
-        return s.replace(pos - 1, end + 1, u8buf, u8len).begin() + off + u8len - 1;
+        return s.replace(pos - 1, end + 1, (char *) buf, 4).begin() + off + 3;
     }
 
 
@@ -83,11 +94,11 @@ namespace re2jit
                     if (rp - lp == 1) switch (*lp)
                     {
                         case 'L':
-                            src = _rewrite_step(regexp, src, rp, inst::kUnicodeLetter);
+                            src = _rewrite_step(regexp, src, rp, inst::kUnicodeType, UNICODE_TYPE_L);
                             break;
 
                         case 'N':
-                            src = _rewrite_step(regexp, src, rp, inst::kUnicodeNumber);
+                            src = _rewrite_step(regexp, src, rp, inst::kUnicodeType, UNICODE_TYPE_N);
                             break;
                     }
 
@@ -100,27 +111,8 @@ namespace re2jit
     }
 
 
-    /* Check whether the i-th opcode of a re2 program is actually a fake instruction
-     * inserted by `rewrite`, meaning it is a start of a sequence of instruction
-     * that match a Unicode private use character. If yes, returns the list of
-     * instructions to apply; if at least one matches, then this opcode matched.
-     * If not, the list is empty.
-     */
-    static inline std::vector<inst> is_extcode(re2::Prog *p, re2::Prog::Inst *in)
+    static inline std::vector<inst> _follow_empty(re2::Prog *p, re2::Prog::Inst *in, uint8_t op, uint16_t arg)
     {
-        // (SURROGATE_L .. SURROGATE_H) in UTF-8 = 0xED 0xB3 0xXX where 0xXX & 0xC0 == 0x80.
-        if (in->opcode() != re2::kInstByteRange || in->hi() != 0xED || in->lo() != 0xED)
-            return std::vector<inst>{};
-
-        in = p->inst(in->out());
-
-        if (in->opcode() != re2::kInstByteRange || in->hi() != 0xB3 || in->lo() != 0xB3)
-            return std::vector<inst>{};
-
-        in = p->inst(in->out());
-
-        // The third one is tricky. It can be a choice between any `kInstByteRange`s
-        // where both limits are UTF-8 continuation bytes.
         ssize_t stack[65];
         ssize_t stptr = 0;
         std::vector<inst> rs;
@@ -133,9 +125,9 @@ namespace re2jit
                 break;
 
             case re2::kInstByteRange: {
-                if ((in->lo() & 0xC0) == 0x80 && (in->hi() & 0xC0) == 0x80) {
-                    for (ssize_t a = in->lo(); a <= in->hi(); a++) {
-                        rs.emplace_back(SURROGATE_L + (a & 0x3F), in->out());
+                if ((in->lo() & 0xC0u) == 0x80u && (in->hi() & 0xC0u) == 0x80u) {
+                    for (uint8_t a = in->lo(); a <= in->hi(); a++) {
+                        rs.emplace_back(op, arg | (a & 0x3F), in->out());
                     }
 
                     if (!stptr)
@@ -149,6 +141,42 @@ namespace re2jit
                 // regexp can match junk in the middle of a character. not good.
                 return std::vector<inst>{};
         }
+    }
+
+
+    /* Check whether the i-th opcode of a re2 program is actually a fake instruction
+     * inserted by `rewrite`, meaning it is a start of a sequence of instruction
+     * that match a Unicode private use character. If yes, returns the list of
+     * instructions to apply; if at least one matches, then this opcode matched.
+     * If not, the list is empty.
+     */
+    static inline std::vector<inst> is_extcode(re2::Prog *p, re2::Prog::Inst *in)
+    {
+        if (in->opcode() != re2::kInstByteRange || in->hi() != 0xF3 || in->lo() != 0xF3)
+            return std::vector<inst>{};
+
+        in = p->inst(in->out());
+
+        if (in->opcode() != re2::kInstByteRange || in->hi() != 0xB0 || in->lo() != 0xB0)
+            return std::vector<inst>{};
+
+        in = p->inst(in->out());
+
+        // Third and fourth ones can be any continuation byte.
+        std::vector<inst> rs;
+
+        for (inst i : _follow_empty(p, in, 0, 0)) {
+            in = p->inst(i.out());
+
+            std::vector<inst> xs = _follow_empty(p, p->inst(i.out()), i.arg() >> 2, (i.arg() & 3) << 6);
+
+            if (xs.empty())
+                return std::vector<inst>{};
+
+            rs.insert(rs.end(), xs.begin(), xs.end());
+        }
+
+        return rs;
     }
 
 
