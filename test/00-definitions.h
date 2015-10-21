@@ -26,41 +26,43 @@
 } while (0)
 
 
-#define GENERIC_TEST(name, regex, anchor, _input, ngroups, __xs)                              \
-    test_case(name) {                                                                         \
-        RE2 r2(regex);                                                                        \
-        re2jit::it rj(regex);                                                                 \
-        if (!r2.ok()) return Result::Fail("[re2] %s", r2.error().c_str());                    \
-        if (!rj.ok()) return Result::Fail("[jit] %s", rj.error().c_str());                    \
-        const char input[] = _input;                                                          \
-                                                                                              \
-        re2::StringPiece r2groups[ngroups], rjgroups[ngroups];                                \
-        int r2match = r2.Match(input, 0, sizeof(input) - 1, RE2::anchor, r2groups, ngroups);  \
-        int rjmatch = rj.match(input, RE2::anchor, rjgroups, ngroups);                        \
-        if (r2match != rjmatch) return Result::Fail("expected %d, got %d", r2match, rjmatch); \
-                                                                                              \
-        __xs;                                                                                 \
-        return Result::Pass("= %d", rjmatch);                                                 \
+#define GENERIC_TEST(name, regex, anchor, _input, ngroups, __xs, answer, ...)      \
+    test_case(name) {                                                              \
+        const char input[] = _input;                                               \
+        re2::StringPiece rjgroups[ngroups];                                        \
+        re2::StringPiece r2groups[ngroups] = { __VA_ARGS__ };                      \
+                                                                                   \
+        re2jit::it rj(regex);                                                      \
+        if (!rj.ok()) return Result::Fail("%s", rj.error().c_str());               \
+                                                                                   \
+        int rjmatch = rj.match(input, RE2::anchor, rjgroups, ngroups);             \
+        int r2match = answer;                                                      \
+        if (r2match != rjmatch) return Result::Fail("invalid answer %d", rjmatch); \
+        if (r2match) for (ssize_t i = 0; i < (ssize_t) ngroups; i++) {             \
+            const auto &g2 = r2groups[i];                                          \
+            const auto &gj = rjgroups[i];                                          \
+            if (g2 != gj) {                                                        \
+                return Result::Fail(                                               \
+                    "group %zu incorrect\n"                                        \
+                    "    expected [%d @ %p] '%.*s'\n"                              \
+                    "    matched  [%d @ %p] '%.*s'", i,                            \
+                    g2.size(), g2.data(), std::min(g2.size(), 50), g2.data(),      \
+                    gj.size(), gj.data(), std::min(gj.size(), 50), gj.data());     \
+            }                                                                      \
+        }                                                                          \
+                                                                                   \
+        __xs;                                                                      \
+        return Result::Pass("= %d", rjmatch);                                      \
     }
 
 
-#define GENERIC_GROUP_TEST(name, regex, anchor, _input, ngroups, __xs)           \
-    GENERIC_TEST(name, regex, anchor, _input, ngroups, {                         \
-        if (rjmatch) for (size_t i = 0; i < ngroups; i++) {                      \
-            const auto &g2 = r2groups[i];                                        \
-            const auto &gj = rjgroups[i];                                        \
-            if (g2 != gj) {                                                      \
-                return Result::Fail(                                             \
-                    "group %zu incorrect\n"                                      \
-                    "    expected [%d @ %p] '%.*s'\n"                            \
-                    "    matched  [%d @ %p] '%.*s'", i,                          \
-                    g2.size(), g2.data(), std::min(g2.size(), 50), g2.data(),    \
-                    gj.size(), gj.data(), std::min(gj.size(), 50), gj.data());   \
-            }                                                                    \
-        }                                                                        \
-                                                                                 \
-        __xs;                                                                    \
-    })
+#define FIXED_TEST(regex, anchor, input, answer, ...) \
+    GENERIC_TEST(FORMAT_NAME(regex, anchor, input), regex, anchor, input, (sizeof((const char*[]){__VA_ARGS__})/sizeof(char*)), {}, answer, __VA_ARGS__)
+
+
+#define GENERIC_RE2_TEST(name, regex, anchor, _input, ngroups, __xs) \
+    GENERIC_TEST(name, regex, anchor, _input, ngroups, __xs,         \
+        RE2(regex).Match(input, 0, sizeof(input) - 1, RE2::anchor, r2groups, ngroups))
 
 
 #if RE2JIT_DO_PERF_TESTS
@@ -78,18 +80,14 @@
 
 #define GENERIC_PERF_TEST(name, __n, setup, body, teardown) \
     test_case(name) {                                       \
-        return Result::Skip("=> skipped");                  \
+        return Result::Skip("=> ENABLE_PERF_TESTS = 0");    \
     }
 
 #endif
 
 
-#define MATCH_TEST(regex, anchor, input) \
-    GENERIC_TEST(FORMAT_NAME(regex, anchor, input), regex, anchor, input, 0, {})
-
-
-#define GROUP_TEST(regex, anchor, input, n) \
-    GENERIC_GROUP_TEST(FORMAT_NAME(regex, anchor, input), regex, anchor, input, n, {})
+#define MATCH_TEST(regex, anchor, input, n) \
+    GENERIC_RE2_TEST(FORMAT_NAME(regex, anchor, input), regex, anchor, input, n, {})
 
 
 #define PERF_TEST(name, n, regex, anchor, _input, ngroups) \
@@ -108,18 +106,10 @@
       , {})
 
 
-#ifdef RE2JIT_DO_PERF_TESTS
-
-#define GROUP_PERF_TEST(name, n, regex, anchor, input, ngroups) \
-    GENERIC_GROUP_TEST(name, regex, anchor, input, ngroups, {}); \
+#define MATCH_PERF_TEST_NAMED(name, n, regex, anchor, input, ngroups) \
+    GENERIC_RE2_TEST(name, regex, anchor, input, ngroups, {}); \
     PERF_TEST(name, n, regex, anchor, input, ngroups)
 
-#else
 
-#define GROUP_PERF_TEST(name, n, regex, anchor, input, ngroups) \
-    GENERIC_GROUP_TEST(name, regex, anchor, input, ngroups, {})
-
-#endif
-
-#define GROUP_PERF_TEST_EX(n, regex, anchor, input, ngroups) \
-    GROUP_PERF_TEST(FORMAT_NAME(regex, anchor, input), n, regex, anchor, input, ngroups)
+#define MATCH_PERF_TEST(n, regex, anchor, input, ngroups) \
+    MATCH_PERF_TEST_NAMED(FORMAT_NAME(regex, anchor, input), n, regex, anchor, input, ngroups)

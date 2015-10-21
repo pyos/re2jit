@@ -1,29 +1,29 @@
-MATCH_TEST("x", UNANCHORED, "x");
-MATCH_TEST("x", UNANCHORED, "xyz");
-MATCH_TEST("x", UNANCHORED, "uvwx");
-MATCH_TEST("x", UNANCHORED, "uvwxyz");
+MATCH_TEST("x", UNANCHORED, "x", 0);
+MATCH_TEST("x", UNANCHORED, "xyz", 0);
+MATCH_TEST("x", UNANCHORED, "uvwx", 0);
+MATCH_TEST("x", UNANCHORED, "uvwxyz", 0);
 
-MATCH_TEST("x", ANCHOR_START, "x");
-MATCH_TEST("x", ANCHOR_START, "xyz");
-MATCH_TEST("x", ANCHOR_START, "uvwx");
-MATCH_TEST("x", ANCHOR_START, "uvwxyz");
+MATCH_TEST("x", ANCHOR_START, "x", 0);
+MATCH_TEST("x", ANCHOR_START, "xyz", 0);
+MATCH_TEST("x", ANCHOR_START, "uvwx", 0);
+MATCH_TEST("x", ANCHOR_START, "uvwxyz", 0);
 
-MATCH_TEST("x", ANCHOR_BOTH, "x");
-MATCH_TEST("x", ANCHOR_BOTH, "xyz");
-MATCH_TEST("x", ANCHOR_BOTH, "uvwx");
-MATCH_TEST("x", ANCHOR_BOTH, "uvwxyz");
+MATCH_TEST("x", ANCHOR_BOTH, "x", 0);
+MATCH_TEST("x", ANCHOR_BOTH, "xyz", 0);
+MATCH_TEST("x", ANCHOR_BOTH, "uvwx", 0);
+MATCH_TEST("x", ANCHOR_BOTH, "uvwxyz", 0);
 
-MATCH_TEST("^x", UNANCHORED, "x");
-MATCH_TEST("^x", UNANCHORED, "xyz");
-MATCH_TEST("^x", UNANCHORED, "uvwx");
-MATCH_TEST("^x", UNANCHORED, "uvwxyz");
+MATCH_TEST("^x", UNANCHORED, "x", 0);
+MATCH_TEST("^x", UNANCHORED, "xyz", 0);
+MATCH_TEST("^x", UNANCHORED, "uvwx", 0);
+MATCH_TEST("^x", UNANCHORED, "uvwxyz", 0);
 
-MATCH_TEST("x$", UNANCHORED, "x");
-MATCH_TEST("x$", UNANCHORED, "xyz");
-MATCH_TEST("x$", UNANCHORED, "uvwx");
-MATCH_TEST("x$", UNANCHORED, "uvwxyz");
+MATCH_TEST("x$", UNANCHORED, "x", 0);
+MATCH_TEST("x$", UNANCHORED, "xyz", 0);
+MATCH_TEST("x$", UNANCHORED, "uvwx", 0);
+MATCH_TEST("x$", UNANCHORED, "uvwxyz", 0);
 
-MATCH_TEST("^x$", UNANCHORED, "x");
-MATCH_TEST("^x$", UNANCHORED, "xyz");
-MATCH_TEST("^x$", UNANCHORED, "uvwx");
-MATCH_TEST("^x$", UNANCHORED, "uvwxyz");
+MATCH_TEST("^x$", UNANCHORED, "x", 0);
+MATCH_TEST("^x$", UNANCHORED, "xyz", 0);
+MATCH_TEST("^x$", UNANCHORED, "uvwx", 0);
+MATCH_TEST("^x$", UNANCHORED, "uvwxyz", 0);
