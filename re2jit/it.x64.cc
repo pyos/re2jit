@@ -306,14 +306,13 @@ struct re2jit::native
                         JMPL_IMM(&rejit_thread_match);
                         break;
 
+                    default:
+                        re2jit::debug::write("re2jit::x64: unknown opcode %d\n", op->opcode());
+
                     case re2::kInstFail:
                         //    ret
                         RETQ();
                         break;
-
-                    default:
-                        re2jit::debug::write("re2jit::x64: unknown opcode %d\n", op->opcode());
-                        return;
                 }
             );
         }
