@@ -4,12 +4,6 @@
 #include "it.x64.asm.h"
 
 
-uint64_t rejit_thread_read_utf8(const rejit_threadset_t *nfa)
-{
-    return rejit_read_utf8((const uint8_t *) nfa->input, nfa->length);
-}
-
-
 struct re2jit::native
 {
     void *_code;
@@ -86,7 +80,9 @@ struct re2jit::native
                 switch (op->opcode()) {
                     case re2jit::inst::kUnicodeType:
                         code.push (as::rdi)
-                            .call ((void *) &rejit_thread_read_utf8)
+                            .mov  (as::mem{as::rdi} + offsetof(struct rejit_threadset_t, length), as::rsi)
+                            .mov  (as::mem{as::rdi} + offsetof(struct rejit_threadset_t, input), as::rdi)
+                            .call ((void *) &rejit_read_utf8)
                             .pop  (as::rdi)
                             .mov  (as::rax, as::rdx)
                             .shr  (32u, as::rdx)
