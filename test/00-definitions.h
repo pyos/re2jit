@@ -78,10 +78,7 @@
 
 #else
 
-#define GENERIC_PERF_TEST(name, __n, setup, body, teardown) \
-    test_case(name) {                                       \
-        return Result::Skip("=> ENABLE_PERF_TESTS = 0");    \
-    }
+#define GENERIC_PERF_TEST(name, __n, setup, body, teardown)
 
 #endif
 
