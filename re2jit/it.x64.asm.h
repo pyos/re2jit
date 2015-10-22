@@ -2,7 +2,6 @@
 struct as
 {
     typedef uint8_t  i8;
-    typedef uint16_t i16;
     typedef uint32_t i32;
     typedef uint64_t i64;
 
@@ -33,8 +32,9 @@ struct as
     struct mem { int32_t disp; r64 base;  // `+ index * offset` not supported.
            // as::mem{as::rcx}      --  (%rcx)
            // as::mem{as::rcx} + 5  -- 5(%rcx)
-           explicit mem(r64 r)            : disp(0), base(r) {}
-                    mem(r64 r, int32_t d) : disp(d), base(r) {}
+           explicit mem(r64 r)                : disp(0), base(r) {}
+                    mem(r64 r, int32_t d)     : disp(d), base(r) {}
+           mem operator + (const void *off) { return mem { base, disp + (int32_t) (uint64_t) off }; }
            mem operator + (int32_t off) { return mem { base, disp + off }; }
            mem operator - (int32_t off) { return mem { base, disp - off }; } };
 
@@ -81,7 +81,6 @@ struct as
 
     #define LAB label&
     as& imm8  (i8  i) { memcpy(allocate(), &i, 1); _last += 1; return *this; }
-    as& imm16 (i16 i) { memcpy(allocate(), &i, 2); _last += 2; return *this; }
     as& imm32 (i32 i) { memcpy(allocate(), &i, 4); _last += 4; return *this; }
     as& imm64 (i64 i) { memcpy(allocate(), &i, 8); _last += 8; return *this; }
     as& imm32 (LAB i) { i.rel32.push_back(size()); return imm32(0); }
@@ -99,6 +98,7 @@ struct as
     as& cmp   ( i8 a, r32 b) { return              imm8(0x83).modrm(7, b).imm8 (a) ; }
     as& cmp   ( i8 a, mem b) { return rex(0, 0, b).imm8(0x83).modrm(7, b).imm8 (a) ; }
     as& cmp   (i32 a, mem b) { return rex(0, 0, b).imm8(0x81).modrm(7, b).imm32(a) ; }
+    as& cmp   (r64 a, mem b) { return rex(0, a, b).imm8(0x3b).modrm(a, b)          ; }
     as& cmpsb (            ) { return              imm8(0xa6)                      ; }
     as& jmp   (i32 a       ) { return              imm8(0xe9).            imm32(a) ; }
     as& jmp   (LAB a       ) { return              imm8(0xe9).            imm32(a) ; }
