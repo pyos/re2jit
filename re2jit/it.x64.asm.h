@@ -98,7 +98,7 @@ struct as
     as& cmp   ( i8 a, r32 b) { return              imm8(0x83).modrm(7, b).imm8 (a) ; }
     as& cmp   ( i8 a, mem b) { return rex(0, 0, b).imm8(0x83).modrm(7, b).imm8 (a) ; }
     as& cmp   (i32 a, mem b) { return rex(0, 0, b).imm8(0x81).modrm(7, b).imm32(a) ; }
-    as& cmp   (r64 a, mem b) { return rex(0, a, b).imm8(0x3b).modrm(a, b)          ; }
+    as& cmp   (r64 a, mem b) { return rex(1, a, b).imm8(0x39).modrm(a, b)          ; }
     as& cmpsb (            ) { return              imm8(0xa6)                      ; }
     as& jmp   (i32 a       ) { return              imm8(0xe9).            imm32(a) ; }
     as& jmp   (LAB a       ) { return              imm8(0xe9).            imm32(a) ; }
