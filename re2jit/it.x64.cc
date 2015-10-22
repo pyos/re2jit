@@ -21,19 +21,16 @@ struct re2jit::native
         size_t i;
         size_t n = prog->size();
 
-        std::vector< uint8_t > code;
-        // A map of opcode offsets to actual offsets in the compiled code.
-        // Populated while emitting code, used for linking later.
-        std::vector< size_t > vtable(n);
-        // For each opcode id, stores the list of positions in generated code where a jump
-        // or a reference to that opcode is necessary. The linker should insert an appropriate
-        // entry from `vtable` at each of these.
-        std::vector< std::vector<size_t> > backrefs(n);
+        as code;
+        std::vector< as::label* > labels(n);
+
+        for (auto& ref : labels) ref = &code.mark();
 
         // If the program starts with a failing opcode, we can use that to redirect
         // all conditional rets instead of jumping over them.
-        XORL_EAX_EAX();
-        RETQ();
+        as::label& fail        = code.mark();
+        as::label& fail_no_xor = code.mark();
+        code.xor_(as::eax, as::eax).mark(fail_no_xor).ret();
 
         // How many transitions have the i-th opcode as a target. We have to maintain
         // a bit vector of visited states to avoid going into an infinite loop; however,
@@ -71,8 +68,7 @@ struct re2jit::native
         delete[] stack;
 
         for (i = 0; i < n; i++) if (indegree[i]) {
-            vtable[i] = code.size();
-
+            code.mark(*labels[i]);
             // Each opcode should conform to System V ABI calling convention.
             //   %rdi :: struct rejit_threadset_t *
             //   %rsi, %rdx, %rcx, %r8, %r9 :: undefined
@@ -80,238 +76,164 @@ struct re2jit::native
             //   %rax :: int -- 1 if found a match, 0 otherwise
 
             // kInstFail will do `ret` anyway.
-            if (prog->inst(i)->opcode() != re2::kInstFail && indegree[i] > 1) {
-                //    mov (%rdi).visited, %rsi
-                MOVB_MRDI_RSI(offsetof(struct rejit_threadset_t, visited));
-                //    test 1<<(i%8), %rsi[i / 8]
-                TEST_IMMB_MRSI(1 << (i % 8), i / 8);
-                //    ret [if non-zero]
-                RETQ_IF(JMP_NE);
-                //    or 1<<(i%8), %rsi[i / 8]
-                ORB_IMM_MRSI(1 << (i % 8), i / 8);
-            }
+            if (prog->inst(i)->opcode() != re2::kInstFail && indegree[i] > 1)
+                code.mov  (as::mem{as::rdi} + offsetof(struct rejit_threadset_t, visited), as::rsi)
+                    .test ((uint8_t) (1 << (i % 8)), as::mem{as::rsi} + i / 8)
+                    .jmp  (fail, as::not_zero)
+                    .or_  ((uint8_t) (1 << (i % 8)), as::mem{as::rsi} + i / 8);
 
             RE2JIT_WITH_INST(op, prog, i,
                 switch (op->opcode()) {
-                    case re2jit::inst::kUnicodeType: {
-                        //    push %rdi
-                        PUSH_RDI();
-                        //    call rejit_thread_read_utf8
-                        CALL_IMM(&rejit_thread_read_utf8);
-                        //    pop %rdi
-                        POP_RDI();
-                        //    mov %rax, %rdx
-                        MOVQ_RAX_RDX();
-                        //    shr $32, %rdx
-                        SHRQ_IMM_RDX(32);
-                        //    ret [if ==]
-                        RETQ_IF(JMP_ZERO);
-                        //    mov %eax, %eax  <-- zero upper 32 bits
-                        MOVL_EAX_EAX();
-                        //    mov UNICODE_CODEPOINT_TYPE, %rsi  <-- no `add imm64, r64`
-                        MOVQ_IMM_RSI((uint64_t) UNICODE_CODEPOINT_TYPE);
-                        //    add %rsi, %rax
-                        ADDQ_RSI_RAX();
-                        //    mov (%rax), %cl
-                        MOV__MRAX__CL();
-                        //    and UNICODE_GENERAL, %cl
-                        ANDB_IMM__CL(UNICODE_GENERAL);
-                        //    cmp arg, %cl
-                        CMPB_IMM__CL(op->arg());
-                        //    ret [if !=]
-                        RETQ_IF(JMP_NE);
-                        //    mov code+vtable[out], %rsi
-                        MOVQ_TBL_RSI(op->out());
-                        //    jmp rejit_thread_wait
-                        JMPL_IMM(&rejit_thread_wait);
+                    case re2jit::inst::kUnicodeType:
+                        code.push (as::rdi)
+                            .call ((void *) &rejit_thread_read_utf8)
+                            .pop  (as::rdi)
+                            .mov  (as::rax, as::rdx)
+                            .shr  (32u, as::rdx)
+                            .jmp  (fail, as::zero)
+                            .mov  (as::eax, as::eax)  // zero upper 32 bits
+                            .mov  ((uint64_t) UNICODE_CODEPOINT_TYPE, as::rsi)
+                            .add  (as::rsi, as::rax)
+                            .mov  (as::mem{as::rax}, as::cl)
+                            .and_ ((uint8_t) UNICODE_GENERAL, as::cl)
+                            .cmp  ((uint8_t) op->arg(), as::cl)
+                            .jmp  (fail, as::not_equal)
+                            .mov  (*labels[op->out()], as::rsi)
+                            .jmp  ((void *) &rejit_thread_wait);
+
                         break;
-                    }
 
-                    case re2jit::inst::kBackReference: {
-                        //    cmp arg*2, (%rdi).groups
-                        CMPL_IMM_MRDI(op->arg() * 2, offsetof(struct rejit_threadset_t, groups));
-                        //    ret [if <=]  <-- wan't enough space to record that group
-                        RETQ_IF(JMP_LE_U);
+                    case re2jit::inst::kBackReference:
+                        code.cmp  ((uint32_t) op->arg() * 2, as::mem{as::rdi} + offsetof(struct rejit_threadset_t, groups))
+                            .jmp  (fail, as::less_equal_u)  // wasn't enough space to record that group
 
-                        //    mov (%rdi).running, %rsi
-                        MOVB_MRDI_RSI(offsetof(struct rejit_threadset_t, running));
-                        //    mov (%rsi).groups[arg*2], %eax
-                        MOVL_MRSI_EAX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * (op->arg() * 2));
-                        //    mov (%rsi).groups[arg*2+1], %ecx
-                        MOVL_MRSI_ECX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * (op->arg() * 2 + 1));
+                            .mov  (as::mem{as::rdi} + offsetof(struct rejit_threadset_t, running), as::rsi)
+                            .mov  (as::mem{as::rsi} + offsetof(struct rejit_thread_t, groups) + sizeof(int) * (op->arg() * 2), as::eax)
+                            .mov  (as::mem{as::rsi} + offsetof(struct rejit_thread_t, groups) + sizeof(int) * (op->arg() * 2 + 1), as::ecx)
 
-                        //    cmp $-1, %eax
-                        CMPB_IMM_EAX(0xFF);
-                        //    ret [if ==]
-                        RETQ_IF(JMP_EQ);
+                            .cmp  ((uint8_t) -1, as::eax)
+                            .jmp  (fail, as::equal)
 
-                        //    sub %eax, %ecx
-                        SUBL_EAX_ECX();
-                        //    ret [if <]
-                        RETQ_IF(JMP_LT);
-                        //    je code+vtable[out]
-                        JMP_TBL(JMP_EQ, op->out());
-                        //    mov %ecx, %edx
-                        MOVL_ECX_EDX();
+                            .sub  (as::eax, as::ecx)
+                            .jmp  (fail, as::less)
+                            .jmp  (*labels[op->out()], as::equal)  // empty subgroup = empty transition
 
-                        //    mov %rdi, %r8
-                        MOVQ_RDI_R8_();
-                        //    mov (%r8).input, %rdi
-                        MOVB_MR8__RDI(offsetof(struct rejit_threadset_t, input));
-                        //    mov %rdi, %rsi
-                        MOVQ_RDI_RSI();
-                        //    sub (%r8).offset, %rsi
-                        SUBB_MR8__RSI(offsetof(struct rejit_threadset_t, offset));
-                        //    add %rax, %rsi
-                        ADDQ_RAX_RSI();
-                        //    repz cmpsb
-                        //    ^    ^-- compare bytes at (%rdi) and (%rsi), increment both
-                        //    \-- repeat while ZF is set and %rcx is non-zero
-                        //    Essentially, this opcode is `ZF, SF = memcmp(%rdi, %rsi, %rcx)`.
-                        REPZ_CMPSB();
-                        //    mov %r8, %rdi
-                        MOVQ_R8__RDI();
-                        //    ret [if !=]
-                        RETQ_IF(JMP_NE);
+                            .mov  (as::ecx, as::edx)
+                            .mov  (as::rdi, as::r8)
+                            .mov  (as::mem{as::r8} + offsetof(struct rejit_threadset_t, input), as::rdi)
+                            .mov  (as::rdi, as::rsi)
+                            .sub  (as::mem{as::r8} + offsetof(struct rejit_threadset_t, offset), as::rsi)
+                            .add  (as::rax, as::rsi)
+                            .repz().cmpsb()
+                            // ^    ^-- compare bytes at (%rdi) and (%rsi), increment both
+                            // \-- repeat while ZF is set and %rcx is non-zero
+                            // Essentially, this opcode is `ZF, SF = memcmp(%rdi, %rsi, %rcx)`.
+                            .mov  (as::r8, as::rdi)
+                            .jmp  (fail, as::not_equal)
 
-                        //    mov code+vtable[out], %rsi
-                        MOVQ_TBL_RSI(op->out());
-                        //    jmp rejit_thread_wait
-                        JMPL_IMM(&rejit_thread_wait);
+                            .mov  (*labels[op->out()], as::rsi)
+                            .jmp  ((void *) &rejit_thread_wait);
+
                         break;
-                    }
 
                     default:
                         re2jit::debug::write("re2jit::x64: unknown extcode %hu\n", op->opcode());
-                        RETQ();
+                        code.ret();
                         break;
                 },
 
                 switch (op->opcode()) {
                     case re2::kInstAltMatch:
                     case re2::kInstAlt:
-                        //    call code+vtable[out]
-                        PUSH_RDI(); CALL_TBL(op->out()); POP_RDI();
-                        //    test %eax, %eax -- non-zero if found a match
-                        TEST_EAX_EAX();
-                        //    jnz -> ret, skipping over `xor %eax, %eax`
-                        JMP_ABS(JMP_NZ, 2L);
+                        code.push  (as::rdi)
+                            .call  (*labels[op->out()])
+                            .pop   (as::rdi)
+                            .test  (as::eax, as::eax)  // non-zero if found a match
+                            .jmp   (fail_no_xor, as::not_zero);
 
-                        if ((size_t) op->out1() != i + 1) {
-                            //    jmp  code+vtable[out1]
-                            JMP_UNCOND_TBL(op->out1());
-                        }
+                        if ((size_t) op->out1() != i + 1)
+                            code.jmp(*labels[op->out1()]);
 
                         break;
 
                     case re2::kInstByteRange:
-                        //    cmp $0, (%rdi).length
-                        CMPB_IMM_MRDI(0, offsetof(struct rejit_threadset_t, length));
-                        //    ret [if ==]
-                        RETQ_IF(JMP_EQ);
+                        code.cmp  ((uint8_t) 0, as::mem{as::rdi} + offsetof(struct rejit_threadset_t, length))
+                            .jmp  (fail, as::equal)
 
-                        //    mov (%rdi).input, %rax
-                        MOVB_MRDI_RAX(offsetof(struct rejit_threadset_t, input));
-                        //    mov (%rax), %cl
-                        MOV__MRAX__CL();
+                            .mov  (as::mem{as::rdi} + offsetof(struct rejit_threadset_t, input), as::rax)
+                            .mov  (as::mem{as::rax}, as::cl);
 
                         if (op->foldcase()) {
-                            //    cmp $'A', %cl
-                            CMPB_IMM__CL('A');
-                            //    jb skip
-                            JMP_OVER(JMP_LT_U, {
-                                //    cmp $'Z', %cl
-                                CMPB_IMM__CL('Z');
-                                //    ja  skip
-                                JMP_OVER(JMP_GT_U,
-                                    //    add $'a'-'A', %cl
-                                    ADDB_IMM__CL('a' - 'A'));
-                            }); // skip:
+                            as::label& skip_caseconv = code.mark();
+
+                            code.cmp  ((uint8_t) 'A', as::cl)
+                                .jmp  (skip_caseconv, as::less_u)
+                                .cmp  ((uint8_t) 'Z', as::cl)
+                                .jmp  (skip_caseconv, as::more_u)
+                                .add  ((uint8_t) ('a' - 'A'), as::cl)
+                                .mark (skip_caseconv);
                         }
 
-                        if (op->hi() == op->lo()) {
-                            //    cmp lo, %cl
-                            CMPB_IMM__CL(op->lo());
-                            //    ret [if !=]
-                            RETQ_IF(JMP_NE);
-                        } else {
-                            //    sub lo, %cl
-                            SUBB_IMM__CL(op->lo());
-                            //    cmp hi-lo, %cl
-                            CMPB_IMM__CL(op->hi() - op->lo());
-                            //    ret [if >]
-                            RETQ_IF(JMP_GT_U);
-                        }
+                        if (op->hi() == op->lo())
+                            code.cmp  ((uint8_t) op->lo(), as::cl)
+                                .jmp  (fail, as::not_equal);
 
-                        //    mov code+vtable[out], %rsi
-                        MOVQ_TBL_RSI(op->out());
-                        //    mov $1, %edx
-                        MOVL_IMM_EDX(1u);
-                        //    jmp rejit_thread_wait
-                        JMPL_IMM(&rejit_thread_wait);
+                        else
+                            code.sub  ((uint8_t) op->lo(), as::cl)
+                                .cmp  ((uint8_t) (op->hi() - op->lo()), as::cl)
+                                .jmp  (fail, as::more_u);
+
+                        code.mov  (*labels[op->out()], as::rsi)
+                            .mov  (1u, as::edx)
+                            .jmp  ((void *) &rejit_thread_wait);
                         break;
 
                     case re2::kInstCapture:
-                        //    cmp cap, (%rdi).groups
-                        CMPL_IMM_MRDI(op->cap(), offsetof(struct rejit_threadset_t, groups));
-                        //    jbe code+vtable[out]
-                        JMP_TBL(JMP_LE_U, op->out());
+                        code.cmp  ((uint32_t) op->cap(), as::mem{as::rdi} + offsetof(struct rejit_threadset_t, groups))
+                            .jmp  (*labels[op->out()], as::less_equal_u)
 
-                        //    mov (%rdi).running, %rcx
-                        MOVB_MRDI_RCX(offsetof(struct rejit_threadset_t, running));
-                        //    mov (%rdi).offset, %rax
-                        MOVB_MRDI_RAX(offsetof(struct rejit_threadset_t, offset));
-                        //    mov (%rcx).groups[cap], %esi
-                        MOVL_MRCX_ESI(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
-                        //    mov %eax, (%rcx).groups[cap]
-                        MOVL_EAX_MRCX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
+                            .mov  (as::mem{as::rdi} + offsetof(struct rejit_threadset_t, running), as::rcx)
+                            .mov  (as::mem{as::rdi} + offsetof(struct rejit_threadset_t, offset),  as::rax)
+                            .mov  (as::mem{as::rcx} + offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap(), as::esi)
+                            .mov  (as::eax, as::mem{as::rcx} + offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap())
 
-                        //    call code+vtable[out]
-                        PUSH_RDI(); PUSH_RSI(); CALL_TBL(op->out()); POP_RSI(); POP_RDI();
+                            .push (as::rdi)
+                            .push (as::rsi)
+                            .call (*labels[op->out()])
+                            .pop  (as::rsi)
+                            .pop  (as::rdi)
 
-                        //    mov (%rdi).running, %rcx
-                        MOVB_MRDI_RCX(offsetof(struct rejit_threadset_t, running));
-                        //    mov %esi, (%rcx).groups[cap]
-                        MOVL_ESI_MRCX(offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap());
-                        //    ret
-                        RETQ();
+                            .mov  (as::mem{as::rdi} + offsetof(struct rejit_threadset_t, running), as::rcx)
+                            .mov  (as::esi, as::mem{as::rcx} + offsetof(struct rejit_thread_t, groups) + sizeof(int) * op->cap())
+                            .ret  ();
                         break;
 
                     case re2::kInstEmptyWidth:
-                        //    mov (%rdi).empty, %eax
-                        MOVB_MRDI_EAX(offsetof(struct rejit_threadset_t, empty));
-                        //    not %eax
-                        NOTL_EAX();
-                        //    test empty, %eax
-                        TEST_IMM_EAX(op->empty());
-                        //    ret [if non-zero]
-                        RETQ_IF(JMP_NZ);
+                        code.mov  (as::mem{as::rdi} + offsetof(struct rejit_threadset_t, empty), as::eax)
+                            .not_ (as::eax)
+                            .test ((uint32_t) op->empty(), as::eax)
+                            .jmp  (fail, as::not_zero);
 
-                        if ((size_t) op->out() != i + 1) {
-                            //    jmp code+vtable[out]
-                            JMP_UNCOND_TBL(op->out());
-                        }
+                        if ((size_t) op->out() != i + 1)
+                            code.jmp(*labels[op->out()]);
 
                         break;
 
                     case re2::kInstNop:
-                        if ((size_t) op->out() != i + 1) {
-                            //    jmp code+vtable[out]
-                            JMP_UNCOND_TBL(op->out());
-                        }
+                        if ((size_t) op->out() != i + 1)
+                            code.jmp(*labels[op->out()]);
+
                         break;
 
                     case re2::kInstMatch:
-                        //    jmp rejit_thread_match
-                        JMPL_IMM(&rejit_thread_match);
+                        code.jmp((void *) &rejit_thread_match);
                         break;
 
                     default:
                         re2jit::debug::write("re2jit::x64: unknown opcode %d\n", op->opcode());
 
                     case re2::kInstFail:
-                        //    ret
-                        RETQ();
+                        code.ret();
                         break;
                 }
             );
@@ -321,31 +243,10 @@ struct re2jit::native
                                            PROT_READ | PROT_WRITE,
                                            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-        if (target == (uint8_t *) -1) {
+        if (target == (uint8_t *) -1)
             return;
-        }
 
-        {
-            uint8_t *target2 = target;
-
-            for (uint8_t byte : code) {
-                *target2++ = byte;
-            }
-        }
-
-        for (i = 0; i < n; i++) {
-            for (size_t ref : backrefs[i]) {
-                if (IS_JUMP_TARGET(ref)) {
-                    int32_t offset = vtable[i] - (ref + 4);
-                    // jumps use 32-bit signed offsets, thus the target is relative to ref+4.
-                    memcpy(target + ref, &offset, sizeof(offset));
-                } else {
-                    uint64_t addr = (size_t) (target + vtable[i]);
-                    // movq -- 64-bit absolute pointer
-                    memcpy(target + ref, &addr, sizeof(addr));
-                }
-            }
-        }
+        code.write(target);
 
         if (mprotect(target, code.size(), PROT_READ | PROT_EXEC) == -1) {
             munmap(target, code.size());
@@ -353,7 +254,7 @@ struct re2jit::native
         }
 
         _code  = target;
-        _entry = target + vtable[prog->start()];
+        _entry = target + labels[prog->start()]->offset;
         _size  = code.size();
     }
 

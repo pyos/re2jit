@@ -1,154 +1,209 @@
-// note down that `$+offset` should be linked to a vtable index.
-// see compiler in it.x64.cc for definition of `backrefs`, `vtable`, and `code`.
-#define INSBACK(index, offset) backrefs[index].push_back(code.size() + offset)
+// this is complete bullshit.
+struct as
+{
+    typedef uint8_t  i8;
+    typedef uint16_t i16;
+    typedef uint32_t i32;
+    typedef uint64_t i64;
 
+    // http://wiki.osdev.org/X86-64_Instruction_Encoding
+    // http://ref.x86asm.net/coder64-abc.html
+    enum rb  : i8 {  al,  cl,  dl,  bl, };
+ // enum r16 is slow useless shit. use 32-bit registers.
+    enum r32 : i8 { eax, ecx, edx, ebx, esp, ebp, esi, edi, };
+    enum r64 : i8 { rax, rcx, rdx, rbx, rsp, rbp, rsi, rdi, r8, r9, r10, r11, r12, r13, r14, r15, rip = 0x80 | rbp };
 
-// some sw33t x86-64 opcodes!
-#define INSCODE(...) do { \
-    uint8_t __code[] = { __VA_ARGS__ }; \
-    code.reserve(code.size() + sizeof(__code)); \
-    code.insert(code.end(), __code, __code + sizeof(__code)); \
-} while (0)
+    enum cond : i8 {
+        less_u       = 0x2,  // note that `x` is opposite of `x ^ 1`
+        more_equal_u = 0x3,  // pass as second argument to `jmp` for a conditional jump
+        equal        = 0x4,
+        equal_u      = equal,
+        zero         = equal,
+        not_equal    = 0x5,
+        not_equal_u  = not_equal,
+        not_zero     = not_equal,
+        less_equal_u = 0x6,
+        more_u       = 0x7,
+        less         = 0xc,
+        more_equal   = 0xd,
+        less_equal   = 0xe,
+        more         = 0xf,
+    };
 
+    struct mem { int32_t disp; r64 base;  // `+ index * offset` not supported.
+           // as::mem{as::rcx}      --  (%rcx)
+           // as::mem{as::rcx} + 5  -- 5(%rcx)
+           explicit mem(r64 r)            : disp(0), base(r) {}
+                    mem(r64 r, int32_t d) : disp(d), base(r) {}
+           mem operator + (int32_t off) { return mem { base, disp + off }; }
+           mem operator - (int32_t off) { return mem { base, disp - off }; } };
 
-// encode imm8/16/32/64 as comma-separated bytes in little-endian
-#define IMM8(p, off) ((uint8_t)((p)>>(off)))
-#define IMM16(p) IMM8(p, 0), IMM8(p, 8)
-#define IMM32(p) IMM8(p, 0), IMM8(p, 8), IMM8(p, 16), IMM8(p, 24)
-#define IMM64(p) IMM8(p, 0), IMM8(p, 8), IMM8(p, 16), IMM8(p, 24), IMM8(p, 32), IMM8(p, 40), IMM8(p, 48), IMM8(p, 56)
+    struct label
+    {
+        size_t offset;
+        std::vector<size_t> abs64;  // where to link references to this label
+        std::vector<size_t> rel32;  // (this one is relative to position + 4)
+        explicit label(size_t off) : offset(off) {}
+    };
 
-// mov imm32/64, r64
-#define MOVL_IMM_RAX(p) INSCODE(0x48, 0xC7, 0xC0, IMM32(p))
-#define MOVL_IMM_RDX(p) INSCODE(0x48, 0xC7, 0xC2, IMM32(p))
-#define MOVL_IMM_EDX(p) INSCODE(            0xBA, IMM32(p))
-#define MOVQ_IMM_RSI(p) INSCODE(0x48, 0xBE, IMM64(p))
-#define MOVQ_TBL_RSI(p) INSBACK(p, 2); MOVQ_IMM_RSI(0ULL)
+    as() : _start(NULL), _last(NULL), _end(NULL) {}
+   ~as() { free(_start); }
 
-// mov r32/64, r32/64
-#define MOVL_EAX_EAX() INSCODE(      0x89, 0xC0)
-#define MOVL_ECX_EDX() INSCODE(      0x89, 0xCA)
-#define MOVQ_RAX_RDX() INSCODE(0x48, 0x89, 0xC2)
-#define MOVQ_RDI_RSI() INSCODE(0x48, 0x89, 0xFE)
-#define MOVQ_RDI_R8_() INSCODE(0x49, 0x89, 0xF8)
-#define MOVQ_R8__RDI() INSCODE(0x4C, 0x89, 0xC7)
+    size_t size() const { return _last - _start; }
 
-// mov m64=8/32(r64), r8/32/64
-#define MOV__MRAX__CL()  INSCODE(      0x8A, 0x08)
-#define MOVL_MRCX_ESI(p) INSCODE(      0x8B, 0xB1, IMM32(p))
-#define MOVL_MRSI_EAX(p) INSCODE(      0x8B, 0x86, IMM32(p))
-#define MOVL_MRSI_ECX(p) INSCODE(      0x8B, 0x8E, IMM32(p))
-#define MOVB_MRDI_EAX(p) INSCODE(      0x8B, 0x47, IMM8(p, 0))
-#define MOVB_MRDI_RAX(p) INSCODE(0x48, 0x8B, 0x47, IMM8(p, 0))
-#define MOVB_MRDI_RCX(p) INSCODE(0x48, 0x8B, 0x4F, IMM8(p, 0))
-#define MOVB_MRDI_RSI(p) INSCODE(0x48, 0x8B, 0x77, IMM8(p, 0))
-#define MOVB_MR8__RDI(p) INSCODE(0x49, 0x8B, 0x78, IMM8(p, 0))
+    label& mark()
+    {
+        _labels.emplace_back(size());
+        return _labels.back();
+    }
 
-// mov r32/64, m64=imm8/32(r64)
-#define MOVL_EAX_MRCX(p) INSCODE(0x89, 0x81, IMM32(p))
-#define MOVL_ESI_MRCX(p) INSCODE(0x89, 0xB1, IMM32(p))
+    as& mark(label& lb) {
+        lb.offset = size();
+        return *this;
+    }
 
-// cmp imm8, r8/32
-#define CMPB_IMM__CL(p) INSCODE(0x80, 0xF9, IMM8(p, 0))
-#define CMPB_IMM_EAX(p) INSCODE(0x83, 0xF8, IMM8(p, 0))
+    void write(void *base) const
+    {
+        uint8_t *tg = (uint8_t *) memcpy(base, _start, size());
 
-// cmp imm8/32, m64=imm8(r64)
-#define CMPB_IMM_MRDI(imm, d) INSCODE(0x83, 0x7F, IMM8(d, 0), IMM8(imm, 0))
-#define CMPL_IMM_MRDI(imm, d) INSCODE(0x81, 0x7F, IMM8(d, 0), IMM32(imm))
+        for (const label& lb : _labels) {
+            uint8_t *t = &tg[lb.offset];
 
-// add r64, r64
-#define ADDQ_RSI_RAX() INSCODE(0x48, 0x01, 0xF0)
-#define ADDQ_RAX_RSI() INSCODE(0x48, 0x01, 0xC6)
+            for (size_t ref : lb.abs64)
+                memcpy(&tg[ref], &t, sizeof(t));
 
-// add/sub imm8, r8
-#define ADDB_IMM__CL(p) INSCODE(0x80, 0xC1, IMM8(p, 0))
-#define SUBB_IMM__CL(p) INSCODE(0x80, 0xE9, IMM8(p, 0))
+            for (size_t ref : lb.rel32) {
+                int32_t r = t - &tg[ref + 4];
+                memcpy(&tg[ref], &r, sizeof(r));
+            }
+        }
+    }
 
-// sub r32, r32
-#define SUBL_EAX_ECX() INSCODE(0x29, 0xC1)
+    #define LAB label&
+    as& imm8  (i8  i) { memcpy(allocate(), &i, 1); _last += 1; return *this; }
+    as& imm16 (i16 i) { memcpy(allocate(), &i, 2); _last += 2; return *this; }
+    as& imm32 (i32 i) { memcpy(allocate(), &i, 4); _last += 4; return *this; }
+    as& imm64 (i64 i) { memcpy(allocate(), &i, 8); _last += 8; return *this; }
+    as& imm32 (LAB i) { i.rel32.push_back(size()); return imm32(0); }
+    as& imm64 (LAB i) { i.abs64.push_back(size()); return imm64(0); }
+    //         src    dst             REX prefix   opcode     ModR/M      immediate
+    //                /cond           [64-bit mode]           [+ disp]
+    as& add   ( i8 a,  rb b) { return              imm8(0x80).modrm(0, b).imm8 (a) ; }
+    as& add   (r32 a, r32 b) { return              imm8(0x01).modrm(a, b)          ; }
+    as& add   (r64 a, r64 b) { return rex(1, a, b).imm8(0x01).modrm(a, b)          ; }
+    as& and_  ( i8 a,  rb b) { return              imm8(0x80).modrm(4, b).imm8 (a) ; }
+    as& call  (i32 a       ) { return              imm8(0xe8).            imm32(a) ; }
+    as& call  (LAB a       ) { return              imm8(0xe8).            imm32(a) ; }
+    as& call  (       r64 b) { return rex(0, 0, b).imm8(0xff).modrm(2, b)          ; }
+    as& cmp   ( i8 a,  rb b) { return              imm8(0x80).modrm(7, b).imm8 (a) ; }
+    as& cmp   ( i8 a, r32 b) { return              imm8(0x83).modrm(7, b).imm8 (a) ; }
+    as& cmp   ( i8 a, mem b) { return rex(0, 0, b).imm8(0x83).modrm(7, b).imm8 (a) ; }
+    as& cmp   (i32 a, mem b) { return rex(0, 0, b).imm8(0x81).modrm(7, b).imm32(a) ; }
+    as& cmpsb (            ) { return              imm8(0xa6)                      ; }
+    as& jmp   (i32 a       ) { return              imm8(0xe9).            imm32(a) ; }
+    as& jmp   (LAB a       ) { return              imm8(0xe9).            imm32(a) ; }
+    as& jmp   (i32 a,  i8 b) { return   imm8(0x0f).imm8(0x80 | b).        imm32(a) ; }
+    as& jmp   (LAB a,  i8 b) { return   imm8(0x0f).imm8(0x80 | b).        imm32(a) ; }
+    as& jmp   (       r64 b) { return rex(0, 0, b).imm8(0xff).modrm(4, b)          ; }
+    as& mov   (i32 a, r32 b) { return              imm8(0xb8 | b).        imm32(a) ; }
+    as& mov   (i32 a, r64 b) { return rex(1, 0, b).imm8(0xc7).modrm(0, b).imm32(a) ; }
+    as& mov   (i64 a, r64 b) { return rex(1, 0, b).imm8(0xb8 | b).        imm64(a) ; }
+    as& mov   (LAB a, r64 b) { return rex(1, 0, b).imm8(0xb8 | b).        imm64(a) ; }
+    as& mov   (r32 a, r32 b) { return              imm8(0x89).modrm(a, b)          ; }
+    as& mov   (r64 a, r64 b) { return rex(1, a, b).imm8(0x89).modrm(a, b)          ; }
+    as& mov   (mem a,  rb b) { return rex(0, 0, a).imm8(0x8a).modrm(a, b)          ; }
+    as& mov   (mem a, r32 b) { return rex(0, 0, a).imm8(0x8b).modrm(a, b)          ; }
+    as& mov   (mem a, r64 b) { return rex(1, a, b).imm8(0x8b).modrm(a, b)          ; }
+    as& mov   ( rb a, mem b) { return rex(0, 0, b).imm8(0x88).modrm(a, b)          ; }
+    as& mov   (r32 a, mem b) { return rex(0, 0, b).imm8(0x89).modrm(a, b)          ; }
+    as& mov   (r64 a, mem b) { return rex(1, a, b).imm8(0x89).modrm(a, b)          ; }
+    as& not_  (       r32 b) { return              imm8(0xf7).modrm(2, b)          ; }
+    as& or_   ( i8 a, mem b) { return rex(0, 0, b).imm8(0x80).modrm(1, b).imm8 (a) ; }
+    as& pop   (       r64 b) { return rex(0, 0, b).imm8(0x58 | (b & 7))            ; }
+    as& push  (       r64 b) { return rex(0, 0, b).imm8(0x50 | (b & 7))            ; }
+    as& repz  (            ) { return              imm8(0xf3)                      ; }
+    as& ret   (            ) { return              imm8(0xc3)                      ; }
+    as& shr   ( i8 a, r64 b) { return rex(1, 0, b).imm8(0xc1).modrm(5, b).imm8 (a) ; }
+    as& sub   ( i8 a,  rb b) { return              imm8(0x80).modrm(5, b).imm8 (a) ; }
+    as& sub   (r32 a, r32 b) { return              imm8(0x29).modrm(a, b)          ; }
+    as& sub   (r64 a, r64 b) { return rex(1, a, b).imm8(0x29).modrm(a, b)          ; }
+    as& sub   (mem a, r64 b) { return rex(1, a, b).imm8(0x2b).modrm(a, b)          ; }
+    as& sub   (r64 a, mem b) { return rex(1, a, b).imm8(0x29).modrm(a, b)          ; }
+    as& test  (i32 a, r32 b) { return              imm8(0xf7).modrm(0, b).imm32(a) ; }
+    as& test  (r32 a, r32 b) { return              imm8(0x85).modrm(a, b)          ; }
+    as& test  ( i8 a, mem b) { return rex(0, 0, b).imm8(0xf6).modrm(0, b).imm8 (a) ; }
+    as& test  (i32 a, mem b) { return rex(0, 0, b).imm8(0xf7).modrm(0, b).imm32(a) ; }
+    as& xor_  (r32 a, r32 b) { return              imm8(0x31).modrm(a, b)          ; }
+    // shorthands for indirect jumps to 64-bit (ok, 48-bit) pointers.
+    // c++ still complains if that pointer is a function pointer, though.
+    as& jmp   (void *p) { return mov((uint64_t) p, rax).jmp  (rax); }
+    as& call  (void *p) { return mov((uint64_t) p, rax).call (rax); }
+    #undef LAB
 
-// sub m64=im8(r64), r64
-#define SUBB_MR8__RSI(p) INSCODE(0x49, 0x2B, 0x70, IMM8(p, 0))
+    protected:
+        as& rex(i8 w, i8 r, mem b) { return rex(w, r, b.base); }
+        as& rex(i8 w, mem b, i8 r) { return rex(w, r, b.base); }
+        as& rex(i8 w, i8 r /*, i8 x -- index register, not supported */, i8 b)
+        {
+            //     /--- fixed value
+            //     |      /--- opcode is 64-bit
+            //     |      |         /--- additional bit for modr/m reg1
+            //     |      |         |               /--- same for reg2
+            i8 f = 0x40 | w << 3 | (r & 8) >> 1 | (b & 8) >> 3;
+            //          /--- REX with all zero flags is ignored
+            return f == 0x40 ? *this : imm8(f);
+        }
 
-// not r32
-#define NOTL_EAX() INSCODE(0xF7, 0xD0)
+        as& modrm( i8 a,  i8 b) { return imm8((a & 7) << 3 | (b & 7) | 0xc0); }
+        as& modrm( i8 a, mem b) { return imm8((a & 7) << 3 | (b.base & 7)).modrm(b); }
+        as& modrm(mem a,  i8 b) { return imm8((b & 7) << 3 | (a.base & 7)).modrm(a); }
+        as& modrm(mem m) {
+            uint8_t *ref = _last - 1;
+            // *ref is the ModR/M byte:
+            //    0 1 2 3 4 5 6 7
+            //    | | |   | \---/----- register 1
+            //    | | \---/----- opcode extension (only for single-register opcodes) or register 2
+            //    \-/----- mode (0, 1, or 2; 3 means "raw value from register" and is encoded above)
+            if (m.base == rsp)
+                // rsp's encoding (100) in reg1 means "use SIB byte", so that's how we'll encode it:
+                //   SIB = 00 100 100 = (%rsp, %rsp, 1)
+                imm8(0x24);
 
-// shr imm8, r64
-#define SHRQ_IMM_RDX(p) INSCODE(0x48, 0xC1, 0xEA, IMM8(p, 0))
+            if (m.base == rip)
+                // mode = 0 with reg1 = rbp/rip/r13 (0b101) means `disp32(%rip)`
+                return imm32((i32) m.disp);
 
-// test r32/imm32, r32
-#define TEST_IMM_EAX(p) INSCODE(0xA9, IMM32(p))
-#define TEST_EAX_EAX(p) INSCODE(0x85, 0xC0)
+            if (m.disp == 0 && m.base != rbp && m.base != r13)
+                // mode = 0 otherwise means `(reg1)`, i.e. no displacement
+                return *this;
 
-// test imm8, m8=imm32(r64)
-#define TEST_IMMB_MRSI(p, d) INSCODE(0xF6, 0x86, IMM32(d), IMM8(p, 0))
+            if ((int8_t) m.disp == m.disp) {
+                *ref |= 0x40;  // mode = 1 -- 8-bit displacement.
+                return imm8((i8) m.disp);
+            }
 
-// xor r32, r32
-#define XORL_EAX_EAX() INSCODE(0x31, 0xC0)
+            *ref |= 0x80;  // mode = 2 -- 32-bit displacement
+            return imm32((i32) m.disp);
+        }
 
-// and imm8, r8
-#define ANDB_IMM__CL(p) INSCODE(0x80, 0xE1, IMM8(p, 0))
+        uint8_t *allocate()
+        {
+            if (_end - _last < 8) {
+                uint8_t *r = (uint8_t *) realloc(_start, (_end - _start + 8) * 2);
 
-// or imm8, m8=imm32(r64)
-#define ORB_IMM_MRSI(p, d) INSCODE(0x80, 0x8E, IMM32(d), IMM8(p, 0))
+                if (r == NULL)
+                    throw std::runtime_error("out of memory");
 
-// repz cmpsb
-#define REPZ_CMPSB() INSCODE(0xF3, 0xA6)
+                _end   = r + (_end  - _start + 8) * 2;
+                _last  = r + (_last - _start);
+                _start = r;
+            }
 
-// stack r64
-#define PUSH_RSI() INSCODE(0x56)
-#define PUSH_RDI() INSCODE(0x57)
-#define POP_RSI()  INSCODE(0x5E)
-#define POP_RDI()  INSCODE(0x5F)
+            return _last;
+        }
 
-// call imm32, relative near
-#define CALL_REL(p) INSCODE(0xE8, IMM32(p))
-#define CALL_TBL(k) INSBACK(k, 1); CALL_REL(0)
-
-// call/jump imm32, absolute indirect through %rax
-#define CALL_IMM(p) MOVL_IMM_RAX((uint64_t) p); INSCODE(0xFF, 0xD0)
-#define JMPL_IMM(p) MOVL_IMM_RAX((uint64_t) p); INSCODE(0xFF, 0xE0)
-
-// jump imm32, relative near
-#define JMP_UNCOND_REL(p) INSCODE(0xE9, IMM32(p))  // rel. to next opcode
-#define JMP_UNCOND_TBL(k) INSBACK(k, 1); JMP_UNCOND_REL(0L)  // abs. to vtable entry
-#define JMP_UNCOND_ABS(p) JMP_UNCOND_REL(p - code.size() - 5)  // rel. to code start
-#define RETQ() INSCODE(0xC3)
-
-// jump imm32, conditional relative near
-#define JMP_REL(type, p) INSCODE(0x0F, 0x80 | (type), IMM32(p))
-#define JMP_TBL(type, k) INSBACK(k, 2); JMP_REL(type, 0L)
-#define JMP_ABS(type, p) JMP_REL(type, p - code.size() - 6)
-#define JMP_LT_U 0x2  // note that `xor 1` inverts the condition
-#define JMP_GE_U 0x3
-#define JMP_EQ   0x4
-#define JMP_NE   0x5
-#define JMP_LE_U 0x6
-#define JMP_GT_U 0x7
-#define JMP_LT   0xC
-#define JMP_GE   0xD
-#define JMP_LE   0xE
-#define JMP_GT   0xF
-#define JMP_ZERO JMP_EQ
-#define JMP_NZ   JMP_NE
-
-#define JMP_OVER(type, body) do { \
-    JMP_REL(type, 0L);            \
-    size_t __q = code.size() - 4; \
-    size_t __r = code.size();     \
-    body;                         \
-    __r = code.size() - __r;      \
-    code[__q++] = IMM8(__r, 0);   \
-    code[__q++] = IMM8(__r, 8);   \
-    code[__q++] = IMM8(__r, 16);  \
-    code[__q++] = IMM8(__r, 32);  \
-} while (0)
-
-// assuming the program always starts with a ret
-#define RETQ_IF(type) JMP_ABS(type, 0L)
-
-
-// whether `i` points to an argument to a (relative near) jump/call
-#define IS_JUMP_TARGET(i) ( \
-     code[(i) - 1] == 0xE8 /* unconditional call  */ \
-  || code[(i) - 1] == 0xE9 /* unconditional jump */ \
-  || ((code[(i) - 1] & 0xF0) == 0x80 && code[(i) - 2] == 0x0F) /* conditional jump */)
+        uint8_t *_start;
+        uint8_t *_last;
+        uint8_t *_end;
+        std::deque<label> _labels;
+};
