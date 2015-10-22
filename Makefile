@@ -49,7 +49,6 @@ _require_library = \
 
 
 _require_test_run = \
-	test/01-invalid \
 	test/10-literal \
 	test/11-anchoring \
 	test/12-branching \
