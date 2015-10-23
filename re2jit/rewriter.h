@@ -189,22 +189,11 @@ namespace re2jit
     }
 
 
-    /* Execute a statement in the context of handling an instruction.
-     *
-     * @param var: name of the variable to store the instruction in.
-     * @param prog: `re2::Prog *` to read instructions out of.
-     * @param i: index of the current instruction.
-     * @param ext: stmt to execute if the instruction is a re2jit extension
-     *             (type of `var` is `re2jit::inst *`).
-     * @param normal: stmt to execute if the instruction is a re2 opcode
-     *                (type of `var` is `re2::Prog::Inst *`).
-     *
-     */
-    #define RE2JIT_WITH_INST(var, prog, i, ext, normal) do {               \
-        auto var = (prog)->inst(i);                                        \
-        auto __ins = re2jit::is_extcode(prog, var);                        \
-        if (__ins.size()) {                                                \
-            for (auto var = __ins.begin(); var != __ins.end(); var++) ext; \
+    #define RE2JIT_WITH_INST(prog, i, vec, ext, opv, normal) do {          \
+        auto opv = (prog)->inst(i);                                        \
+        auto vec = re2jit::is_extcode(prog, opv);                          \
+        if (vec.size()) {                                                  \
+            ext;                                                           \
         } else {                                                           \
             normal;                                                        \
         }                                                                  \

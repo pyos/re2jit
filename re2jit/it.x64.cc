@@ -40,13 +40,12 @@ struct re2jit::native
         indegree[*stptr++ = prog->start()]++;
 
         while (stptr != stack)
-            RE2JIT_WITH_INST(op, prog, *--stptr,
-                // re2jit::inst *
-                if (!indegree[op->out()]++)
-                    *stptr++ = op->out();
+            RE2JIT_WITH_INST(prog, *--stptr,
+                vec, for (auto& op : vec)
+                    if (!indegree[op.out()]++)
+                        *stptr++ = op.out();
 
-                // re2::Prog::Inst *
-              , switch (op->opcode()) {
+              , op, switch (op->opcode()) {
                     case re2::kInstAlt:
                     case re2::kInstAltMatch:
                         if (!indegree[op->out1()]++)
@@ -77,65 +76,83 @@ struct re2jit::native
                     .test ((as::i8) (1 << (i % 8)), as::mem{as::rsi} + i / 8).jmp(fail, as::not_zero)
                     .or_  ((as::i8) (1 << (i % 8)), as::mem{as::rsi} + i / 8);
 
-            RE2JIT_WITH_INST(op, prog, i,
-                switch (op->opcode()) {
-                    case re2jit::inst::kUnicodeType:
-                        code// utf8_chr = rejit_read_utf8(nfa->input, nfa->length);
-                            .push (as::rdi)
-                            .mov  (as::mem{as::rdi} + &NFA->length, as::rsi)
-                            .mov  (as::mem{as::rdi} + &NFA->input,  as::rdi)
-                            .call ((void *) &rejit_read_utf8)
-                            .pop  (as::rdi)
-                            // if ((utf8_length = utf8_chr >> 32) == 0) return;
-                            .mov  (as::rax, as::rdx)
-                            .shr  (32u,     as::rdx) .jmp(fail, as::zero)
-                            // if ((UNICODE_CODEPOINT_TYPE[utf8_chr] & UNICODE_GENERAL) != arg) return;
-                            .mov  ((uint64_t) UNICODE_CODEPOINT_TYPE, as::rsi)
-                            .mov  (as::eax, as::eax)  // zero upper 32 bits
-                            .add  (as::rsi, as::rax)
-                            .mov  (as::mem{as::rax}, as::cl)
-                            .and_ ((as::i8) UNICODE_GENERAL, as::cl)
-                            .cmp  ((as::i8) op->arg(), as::cl).jmp(fail, as::not_equal)
-                            // return rejit_thread_wait(nfa, &out, utf8_length);
-                            .mov  (*labels[op->out()], as::rsi)
-                            .jmp  ((void *) &rejit_thread_wait);
+            RE2JIT_WITH_INST(prog, i,
+                vec, {
+                    size_t i = 0;
+                    std::vector< as::label* > options(vec.size() - 1);
+                    for (auto& ref : options) ref = &code.mark();
+                    for (auto op = vec.begin(); op != vec.end(); ++i, ++op) {
+                        as::label* lb;
 
-                        break;
+                        if (i != 0)
+                            code.mark(*options[i - 1]);
 
-                    case re2jit::inst::kBackReference:
-                        code// if (nfa->groups <= arg * 2) return;
-                            .cmp  ((as::i32) op->arg() * 2, as::mem{as::rdi} + &NFA->groups)
-                            .jmp  (fail, as::less_equal_u)  // wasn't enough space to record that group
+                        if (i != vec.size() - 1) {
+                            code.push  (as::rdi).call  (*(lb = &code.mark()))
+                                .pop   (as::rdi).jmp   (*options[i]);
+                            code.mark(*lb);
+                        }
 
-                            .mov  (as::mem{as::rdi} + &NFA->running, as::rsi)
-                            .mov  (as::mem{as::rsi} + &THREAD->groups[op->arg() * 2],     as::eax)
-                            .mov  (as::mem{as::rsi} + &THREAD->groups[op->arg() * 2 + 1], as::ecx)
-                            // if (start == -1 || end < start) return;
-                            .cmp  ((as::i8) -1, as::eax).jmp(fail, as::equal)
-                            .sub  (as::eax,     as::ecx).jmp(fail, as::less)
-                            // if (start == end) goto out;
-                            .jmp  (*labels[op->out()], as::equal)  // empty subgroup = empty transition
-                            // if (nfa->length < end - start) return;
-                            .cmp  (as::rcx, as::mem{as::rdi} + &NFA->length).jmp(fail, as::less_u)
-                            // if (memcmp(nfa->input, nfa->input + start - nfa->offset, end - start)) return;
-                            .mov  (as::ecx, as::edx)
-                            .mov  (as::rdi, as::r8)
-                            .mov  (as::mem{as::r8} + &NFA->input, as::rdi)
-                            .mov  (as::rdi, as::rsi)
-                            .add  (as::rax, as::rsi)
-                            .sub  (as::mem{as::r8} + &NFA->offset, as::rsi)
-                            // compare bytes at (%rdi) and (%rsi) until a != b or %ecx is 0
-                            .repz().cmpsb()
-                            .mov  (as::r8, as::rdi)
-                            .jmp  (fail, as::not_equal)
-                            // return rejit_thread_wait(nfa, &out, end - start);
-                            .mov  (*labels[op->out()], as::rsi)
-                            .jmp  ((void *) &rejit_thread_wait);
+                        switch (op->opcode()) {
+                            case re2jit::inst::kUnicodeType:
+                                code// utf8_chr = rejit_read_utf8(nfa->input, nfa->length);
+                                    .push (as::rdi)
+                                    .mov  (as::mem{as::rdi} + &NFA->length, as::rsi)
+                                    .mov  (as::mem{as::rdi} + &NFA->input,  as::rdi)
+                                    .call ((void *) &rejit_read_utf8)
+                                    .pop  (as::rdi)
+                                    // if ((utf8_length = utf8_chr >> 32) == 0) return;
+                                    .mov  (as::rax, as::rdx)
+                                    .shr  (32u,     as::rdx) .jmp(fail, as::zero)
+                                    // if ((UNICODE_CODEPOINT_TYPE[utf8_chr] & UNICODE_GENERAL) != arg) return;
+                                    .mov  ((uint64_t) UNICODE_CODEPOINT_TYPE, as::rsi)
+                                    .mov  (as::eax, as::eax)  // zero upper 32 bits
+                                    .add  (as::rsi, as::rax)
+                                    .mov  (as::mem{as::rax}, as::cl)
+                                    .and_ ((as::i8) UNICODE_GENERAL, as::cl)
+                                    .cmp  ((as::i8) op->arg(), as::cl).jmp(fail, as::not_equal)
+                                    // return rejit_thread_wait(nfa, &out, utf8_length);
+                                    .mov  (*labels[op->out()], as::rsi)
+                                    .jmp  ((void *) &rejit_thread_wait);
 
-                        break;
-                },
+                                break;
 
-                switch (op->opcode()) {
+                            case re2jit::inst::kBackReference:
+                                code// if (nfa->groups <= arg * 2) return;
+                                    .cmp  ((as::i32) op->arg() * 2, as::mem{as::rdi} + &NFA->groups)
+                                    .jmp  (fail, as::less_equal_u)  // wasn't enough space to record that group
+
+                                    .mov  (as::mem{as::rdi} + &NFA->running, as::rsi)
+                                    .mov  (as::mem{as::rsi} + &THREAD->groups[op->arg() * 2],     as::eax)
+                                    .mov  (as::mem{as::rsi} + &THREAD->groups[op->arg() * 2 + 1], as::ecx)
+                                    // if (start == -1 || end < start) return;
+                                    .cmp  ((as::i8) -1, as::eax).jmp(fail, as::equal)
+                                    .sub  (as::eax,     as::ecx).jmp(fail, as::less)
+                                    // if (start == end) goto out;
+                                    .jmp  (*labels[op->out()], as::equal)  // empty subgroup = empty transition
+                                    // if (nfa->length < end - start) return;
+                                    .cmp  (as::rcx, as::mem{as::rdi} + &NFA->length).jmp(fail, as::less_u)
+                                    // if (memcmp(nfa->input, nfa->input + start - nfa->offset, end - start)) return;
+                                    .mov  (as::ecx, as::edx)
+                                    .mov  (as::rdi, as::r8)
+                                    .mov  (as::mem{as::r8} + &NFA->input, as::rdi)
+                                    .mov  (as::rdi, as::rsi)
+                                    .add  (as::rax, as::rsi)
+                                    .sub  (as::mem{as::r8} + &NFA->offset, as::rsi)
+                                    // compare bytes at (%rdi) and (%rsi) until a != b or %ecx is 0
+                                    .repz().cmpsb()
+                                    .mov  (as::r8, as::rdi)
+                                    .jmp  (fail, as::not_equal)
+                                    // return rejit_thread_wait(nfa, &out, end - start);
+                                    .mov  (*labels[op->out()], as::rsi)
+                                    .jmp  ((void *) &rejit_thread_wait);
+
+                                break;
+                        }
+                    }
+                }
+
+              , op, switch (op->opcode()) {
                     case re2::kInstAltMatch:
                     case re2::kInstAlt:
                         code// if (out(nfa)) return 1;

@@ -37,8 +37,8 @@ struct re2jit::native
 
                 nfa->visited[i / 8] |= 1 << (i % 8);
 
-                RE2JIT_WITH_INST(op, _prog, i,
-                    switch (op->opcode()) {
+                RE2JIT_WITH_INST(_prog, i,
+                    vec, for (auto op = vec.begin(); op != vec.end(); ++op) switch (op->opcode()) {
                         case re2jit::inst::kUnicodeType: {
                             uint64_t x = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length);
 
@@ -83,7 +83,7 @@ struct re2jit::native
                         }
                     },
 
-                    switch (op->opcode()) {
+                  , op, switch (op->opcode()) {
                         case re2::kInstAltMatch:
                         case re2::kInstAlt:
                             stack[stkid++] = op->out1();
