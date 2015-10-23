@@ -13,6 +13,10 @@ namespace re2jit
         it(const re2::StringPiece&);
        ~it();
 
+        it(const it&)  = delete;
+        it(const it&&) = delete;
+        it& operator=(const it&)  = delete;
+
         /* Find out whether the constructor finished successfully.
          * If not, `error()` should return a short description. */
         bool ok() const { return _error.size() == 0; }
