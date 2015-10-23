@@ -81,10 +81,6 @@ struct re2jit::native
                             rejit_thread_wait(nfa, op->out(), end - start);
                             break;
                         }
-
-                        default:
-                            re2jit::debug::write("re2jit::vm: unknown extcode %hu\n", op->opcode());
-                            break;
                     },
 
                     switch (op->opcode()) {
@@ -139,9 +135,6 @@ struct re2jit::native
                                 stkid = 0;
 
                             break;
-
-                        default:
-                            re2jit::debug::write("re2jit::vm: unknown opcode %d\n", op->opcode());
 
                         case re2::kInstFail:
                             break;

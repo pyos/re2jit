@@ -1,10 +1,7 @@
 #ifndef RE2JIT_IT_H
 #define RE2JIT_IT_H
 
-#include <string>
-
 #include <re2/re2.h>
-#include <re2jit/debug.h>
 
 
 namespace re2jit

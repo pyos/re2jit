@@ -2,7 +2,6 @@
 #include <re2/regexp.h>
 
 #include "it.h"
-#include "debug.h"
 #include "threads.h"
 #include "rewriter.h"
 
@@ -87,7 +86,6 @@ namespace re2jit
                          re2::StringPiece* match, int nmatch) const
     {
         if (!ok()) {
-            debug::write("re2jit::it: attempted to match a failed regexp\n");
             return 0;
         }
 
@@ -117,7 +115,6 @@ namespace re2jit
         nfa.flags  = flags;
 
         if (!rejit_thread_init(&nfa)) {
-            debug::write("re2jit::it: failed to initialize NFA\n");
             return 0;
         }
 
@@ -142,7 +139,6 @@ namespace re2jit
     std::string it::lastgroup(const re2::StringPiece *match, int nmatch) const
     {
         if (!ok()) {
-            debug::write("re2jit::it: lastgroup() on a failed regexp\n");
             return "";
         }
 

@@ -2,16 +2,10 @@ CXX      ?= g++
 CXXFLAGS ?= -O3 -Wall -Wextra -Werror
 
 ENABLE_VM         ?= 0
-ENABLE_DEBUG      ?= 0
 ENABLE_PERF_TESTS ?= 0
 
 ifeq ($(ENABLE_VM),1)
 _options += -DRE2JIT_VM
-endif
-
-ifeq ($(ENABLE_DEBUG),1)
-_options += -DRE2JIT_DEBUG
-_testopt += -DRE2JIT_DEBUG
 endif
 
 ifeq ($(ENABLE_PERF_TESTS),1)
@@ -25,7 +19,6 @@ _require_vendor = \
 _require_headers = \
 	re2jit/it.h \
 	re2jit/list.h \
-	re2jit/debug.h \
 	re2jit/threads.h \
 	re2jit/rewriter.h \
 	re2jit/unicode.h \
@@ -34,7 +27,6 @@ _require_headers = \
 
 _require_objects = \
 	obj/it.o \
-	obj/debug.o \
 	obj/threads.o \
 	obj/unicodedata.o
 

@@ -133,11 +133,6 @@ struct re2jit::native
                             .jmp  ((void *) &rejit_thread_wait);
 
                         break;
-
-                    default:
-                        re2jit::debug::write("re2jit::x64: unknown extcode %hu\n", op->opcode());
-                        code.ret();
-                        break;
                 },
 
                 switch (op->opcode()) {
@@ -234,9 +229,6 @@ struct re2jit::native
                         // return rejit_thread_match(nfa);
                         code.jmp((void *) &rejit_thread_match);
                         break;
-
-                    default:
-                        re2jit::debug::write("re2jit::x64: unknown opcode %d\n", op->opcode());
 
                     case re2::kInstFail:
                         code.ret();

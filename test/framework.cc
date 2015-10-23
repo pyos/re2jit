@@ -68,29 +68,12 @@ int main()
         fprintf(stdout, FG YELLOW "%zu" FG RESET ". %s ", i, TESTS[i].name.c_str());
         fflush(stdout);
 
-        #ifdef RE2JIT_DEBUG_H
-            re2jit::debug::clear();
-        #endif
-
         auto r = TESTS[i].fn();
 
         fprintf(stdout, "\r%s%zu" FG RESET ". %s %s\n",
             r.state == Result::PASS ? FG GREEN  :
             r.state == Result::FAIL ? FG RED    :
             r.state == Result::SKIP ? FG YELLOW : "", i, TESTS[i].name.c_str(), r.info);
-
-        #ifdef RE2JIT_DEBUG_H
-            const char *msg = re2jit::debug::iterate(NULL);
-
-            if (msg) {
-                fprintf(stdout, FG_HIDE "%zu." FG_SHOW FG YELLOW " --- re2jit debug:\n" FG RESET, i);
-            }
-
-            while (msg != NULL) {
-                fprintf(stdout, FG_HIDE "%zu." FG_SHOW FG YELLOW "     %s" FG RESET, i, msg);
-                msg = re2jit::debug::iterate(msg);
-            }
-        #endif
     }
 
     return 0;
