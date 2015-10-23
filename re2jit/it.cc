@@ -91,11 +91,18 @@ namespace re2jit
 
         if (!(flags & RE2JIT_ANCHOR_START) && _original) {
             re2::StringPiece found;
-
+            // this will always run the dfa (because of the unanchored-ness)
+            // and only the dfa (because we don't request the contents of any group).
             if (!_original->Match(text, 0, text.size(), RE2::UNANCHORED, &found, 1))
                 return 0;
 
-            return it::match(found, RE2::ANCHOR_BOTH, match, nmatch);
+            if (nmatch > 1)
+                return it::match(found, RE2::ANCHOR_BOTH, match, nmatch);
+
+            // no point in doing anything else otherwise.
+            if (nmatch)
+                *match = found;
+            return 1;
         }
 
         struct rejit_threadset_t nfa;
