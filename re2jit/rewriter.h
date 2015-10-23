@@ -16,7 +16,6 @@ namespace re2jit
         enum code : uint8_t
         {
             kUnicodeType,
-            kBackReference,
         };
 
         inst(code opcode, uint16_t arg, ssize_t out) : opcode_(opcode), arg_(arg), out_(out) {}
@@ -100,19 +99,6 @@ namespace re2jit
                         src = _rewrite_step(regexp, src, rp, inst::kUnicodeType, UNICODE_TYPE_N);
                         break;
                 }
-            }
-
-            else if (isdigit(*src)) {
-                // \1234 -- backreference to group 1234.
-                auto e = src;
-                int  r = 0;
-
-                for (; e != regexp.end() && isdigit(*e); ++e)
-                    r = r * 10 + (*e - '0');
-
-                src = _rewrite_step(regexp, src, --e, inst::kBackReference, r);
-                // re2 does not support backreferences.
-                is_re2 = false;
             }
         }
 

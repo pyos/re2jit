@@ -116,38 +116,6 @@ struct re2jit::native
                                     .jmp  ((void *) &rejit_thread_wait);
 
                                 break;
-
-                            case re2jit::inst::kBackReference:
-                                code// if (nfa->groups <= arg * 2) return;
-                                    .cmp  ((as::i32) op->arg() * 2, as::mem{as::rdi} + &NFA->groups)
-                                    .jmp  (fail, as::less_equal_u)  // wasn't enough space to record that group
-
-                                    .mov  (as::mem{as::rdi} + &NFA->running, as::rsi)
-                                    .mov  (as::mem{as::rsi} + &THREAD->groups[op->arg() * 2],     as::eax)
-                                    .mov  (as::mem{as::rsi} + &THREAD->groups[op->arg() * 2 + 1], as::ecx)
-                                    // if (start == -1 || end < start) return;
-                                    .cmp  ((as::i8) -1, as::eax).jmp(fail, as::equal)
-                                    .sub  (as::eax,     as::ecx).jmp(fail, as::less)
-                                    // if (start == end) goto out;
-                                    .jmp  (*labels[op->out()], as::equal)  // empty subgroup = empty transition
-                                    // if (nfa->length < end - start) return;
-                                    .cmp  (as::rcx, as::mem{as::rdi} + &NFA->length).jmp(fail, as::less_u)
-                                    // if (memcmp(nfa->input, nfa->input + start - nfa->offset, end - start)) return;
-                                    .mov  (as::ecx, as::edx)
-                                    .mov  (as::rdi, as::r8)
-                                    .mov  (as::mem{as::r8} + &NFA->input, as::rdi)
-                                    .mov  (as::rdi, as::rsi)
-                                    .add  (as::rax, as::rsi)
-                                    .sub  (as::mem{as::r8} + &NFA->offset, as::rsi)
-                                    // compare bytes at (%rdi) and (%rsi) until a != b or %ecx is 0
-                                    .repz().cmpsb()
-                                    .mov  (as::r8, as::rdi)
-                                    .jmp  (fail, as::not_equal)
-                                    // return rejit_thread_wait(nfa, &out, end - start);
-                                    .mov  (*labels[op->out()], as::rsi)
-                                    .jmp  ((void *) &rejit_thread_wait);
-
-                                break;
                         }
                     }
                 }
