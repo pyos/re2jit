@@ -17,14 +17,6 @@
 #endif
 
 
-#ifndef RE2JIT_DFA_CUTOFF
-/* When doing unanchored searches on inputs at least this long, use re2's fast DFA
- * to locate the match first, then run our NFA anchored to the result to capture groups.
- * Set to 0 to disable. */
-#define RE2JIT_DFA_CUTOFF 8196
-#endif
-
-
 namespace re2jit
 {
     it::it(const re2::StringPiece& pattern) : _native(NULL), _original(NULL), _bytecode(NULL)
@@ -61,7 +53,7 @@ namespace re2jit
             }
         #endif
 
-        if (_pure_re2 && RE2JIT_DFA_CUTOFF) {
+        if (_pure_re2) {
             _original = new RE2(pattern, RE2::Quiet);
 
             if (!_original->ok()) {
@@ -97,7 +89,7 @@ namespace re2jit
         if (_bytecode->anchor_end() || anchor == RE2::ANCHOR_BOTH)
             flags |= RE2JIT_ANCHOR_END;
 
-        if (!(flags & RE2JIT_ANCHOR_START) && _original && text.size() >= RE2JIT_DFA_CUTOFF) {
+        if (!(flags & RE2JIT_ANCHOR_START) && _original) {
             re2::StringPiece found;
 
             if (!_original->Match(text, 0, text.size(), RE2::UNANCHORED, &found, 1))
