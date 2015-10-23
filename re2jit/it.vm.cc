@@ -81,7 +81,7 @@ struct re2jit::native
                             rejit_thread_wait(nfa, op->out(), end - start);
                             break;
                         }
-                    },
+                    }
 
                   , op, switch (op->opcode()) {
                         case re2::kInstAltMatch:
