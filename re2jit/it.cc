@@ -19,7 +19,7 @@
 
 namespace re2jit
 {
-    it::it(const re2::StringPiece& pattern) : _native(NULL), _original(NULL), _bytecode(NULL)
+    it::it(const re2::StringPiece& pattern) : _native(NULL), _bytecode(NULL), _x_forward(NULL), _x_reverse(NULL)
     {
         re2::RegexpStatus status;
 
@@ -54,11 +54,13 @@ namespace re2jit
         #endif
 
         if (_pure_re2) {
-            _original = new RE2(pattern, RE2::Quiet);
+            re2::Regexp *r = re2::Regexp::Parse(pattern, re2::Regexp::LikePerl, &status);
 
-            if (!_original->ok()) {
-                delete _original;  // Don't care, won't use DFA.
-                _original = NULL;
+            if (r != NULL) {
+                // don't care if NULL, simply won't use DFA.
+                _x_forward = r->CompileToProg(8 << 19);
+                _x_reverse = r->CompileToReverseProg(8 << 19);
+                             r->Decref();
             }
         }
     }
@@ -66,9 +68,10 @@ namespace re2jit
 
     it::~it()
     {
-        delete _original;
         delete _native;
         delete _bytecode;
+        delete _x_forward;
+        delete _x_reverse;
         if (_regexp)
             _regexp->Decref();
     }
@@ -89,20 +92,28 @@ namespace re2jit
         if (_bytecode->anchor_end() || anchor == RE2::ANCHOR_BOTH)
             flags |= RE2JIT_ANCHOR_END;
 
-        if (!(flags & RE2JIT_ANCHOR_START) && _original) {
+        if (!(flags & RE2JIT_ANCHOR_START) && _x_forward && _x_reverse) {
             re2::StringPiece found;
-            // this will always run the dfa (because of the unanchored-ness)
-            // and only the dfa (because we don't request the contents of any group).
-            if (!_original->Match(text, 0, text.size(), RE2::UNANCHORED, &found, 1))
-                return 0;
+            bool failed  = false;
+            bool matched = _x_forward->SearchDFA(text, text, re2::Prog::kUnanchored,
+                                                 re2::Prog::kFirstMatch, &found, &failed, NULL);
 
-            if (nmatch > 1)
-                return it::match(found, RE2::ANCHOR_BOTH, match, nmatch);
+            if (!failed) {
+                if (!matched)
+                    return 0;
 
-            // no point in doing anything else otherwise.
-            if (nmatch)
-                *match = found;
-            return 1;
+                matched = _x_reverse->SearchDFA(found, text, re2::Prog::kAnchored,
+                                                re2::Prog::kLongestMatch, &found, &failed, NULL);
+
+                if (!failed && matched) {
+                    if (nmatch > 1)  // no point in doing anything else otherwise.
+                        return it::match(found, RE2::ANCHOR_BOTH, match, nmatch);
+
+                    if (nmatch)
+                        *match = found;
+                    return 1;
+                }
+            }
         }
 
         struct rejit_threadset_t nfa;

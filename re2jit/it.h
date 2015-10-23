@@ -54,8 +54,9 @@ namespace re2jit
 
         protected:
             native        *_native;
-            re2::RE2      *_original;
-            re2::Prog     *_bytecode;
+            re2::Prog     *_bytecode;  // rewritten with new opcodes
+            re2::Prog     *_x_forward; // untouched
+            re2::Prog     *_x_reverse; // untouched with all concats reversed
             re2::Regexp   *_regexp;
             std::string    _pattern;
             std::string    _pattern2;
