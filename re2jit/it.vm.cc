@@ -32,9 +32,8 @@ struct re2jit::native
                     continue;
                 }
 
-                if (nfa->visited[i / 8] & (1 << (i % 8))) {
+                if (nfa->visited[i / 8] & (1 << (i % 8)))
                     continue;
-                }
 
                 nfa->visited[i / 8] |= 1 << (i % 8);
 
@@ -42,15 +41,15 @@ struct re2jit::native
                     switch (op->opcode()) {
                         case re2jit::inst::kUnicodeType: {
                             uint64_t x = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length);
+
                             if (0 == x)
                                 // not a valid utf-8 character
                                 break;
 
                             rejit_uni_type_t cls = UNICODE_CODEPOINT_TYPE[x & 0xFFFFFFFF];
 
-                            if ((cls & UNICODE_GENERAL) != op->arg()) {
+                            if ((cls & UNICODE_GENERAL) != op->arg())
                                 break;
-                            }
 
                             rejit_thread_wait(nfa, op->out(), x >> 32);
                             break;
@@ -96,9 +95,8 @@ struct re2jit::native
                             break;
 
                         case re2::kInstByteRange: {
-                            if (!nfa->length) {
+                            if (!nfa->length)
                                 break;
-                            }
 
                             uint8_t c = nfa->input[0];
 
@@ -126,9 +124,9 @@ struct re2jit::native
                             break;
 
                         case re2::kInstEmptyWidth:
-                            if (!(op->empty() & ~(nfa->empty))) {
+                            if (!(op->empty() & ~(nfa->empty)))
                                 stack[stkid++] = op->out();
-                            }
+
                             break;
 
                         case re2::kInstNop:
@@ -136,10 +134,9 @@ struct re2jit::native
                             break;
 
                         case re2::kInstMatch:
-                            if (rejit_thread_match(nfa)) {
+                            if (rejit_thread_match(nfa))
                                 // this match is preferred to whatever is still on stack.
                                 stkid = 0;
-                            }
 
                             break;
 

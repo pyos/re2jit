@@ -19,9 +19,8 @@ static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
     t = (struct rejit_thread_t *) malloc(sizeof(struct rejit_thread_t)
                                        + sizeof(int) * r->groups);
 
-    if (t == NULL) {
+    if (t == NULL)
         return NULL;
-    }
 
     rejit_list_init(&t->category);
     rejit_list_init(t);
@@ -34,9 +33,8 @@ static struct rejit_thread_t *rejit_thread_fork(struct rejit_threadset_t *r)
 {
     struct rejit_thread_t *t = rejit_thread_acquire(r);
 
-    if (t == NULL) {
+    if (t == NULL)
         return NULL;
-    }
 
     memcpy(t->groups, r->running->groups, sizeof(int) * r->groups);
     rejit_list_append(r->forked, t);
@@ -44,14 +42,12 @@ static struct rejit_thread_t *rejit_thread_fork(struct rejit_threadset_t *r)
 }
 
 
-// Spawn a copy of the initial thread, pointing at the regexp's entry point.
 static struct rejit_thread_t *rejit_thread_entry(struct rejit_threadset_t *r)
 {
     struct rejit_thread_t *t = rejit_thread_acquire(r);
 
-    if (t == NULL) {
+    if (t == NULL)
         return NULL;
-    }
 
     memset(t->groups, 255, sizeof(int) * r->groups);
     t->entry = r->entry;
@@ -68,9 +64,8 @@ int rejit_thread_init(struct rejit_threadset_t *r)
 
     r->visited = (uint8_t *) calloc(sizeof(uint8_t), (r->states + 7) / 8);
 
-    if (r->visited == NULL) {
+    if (r->visited == NULL)
         return 0;
-    }
 
     rejit_list_init(&r->queues[0]);
     rejit_list_init(&r->queues[1]);
@@ -81,9 +76,8 @@ int rejit_thread_init(struct rejit_threadset_t *r)
     r->free = NULL;
     r->running = NULL;
 
-    if (!r->length) {
+    if (!r->length)
         r->empty |= RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT;
-    }
 
     if (rejit_thread_entry(r) == NULL) {
         free(r->visited);
@@ -156,48 +150,39 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r)
             r->free = q;
         }
 
-        r->running = NULL;
-
-        if (!r->length) {
+        if (!r->length)
             return 0;
-        }
 
-        // this bit vector is shared across all threads on a single queue.
-        // whichever thread first enters a state gets to own that state.
         memset(r->visited, 0, (r->states + 7) / 8);
 
         r->active_queue = queue = !queue;
         r->offset++;
         r->empty = 0;
 
-        if (*r->input++ == '\n') {
+        if (*r->input++ == '\n')
             r->empty |= RE2JIT_EMPTY_BEGIN_LINE;
-        }
 
-        if (! --(r->length)) {
+        if (--r->length == 0)
             r->empty |= RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT;
-        } else if (*r->input == '\n') {
+        else if (*r->input == '\n')
             r->empty |= RE2JIT_EMPTY_END_LINE;
-        }
 
         // Word boundaries not supported because UTF-8.
 
-        if (!(r->flags & RE2JIT_ANCHOR_START)) {
+        if (!(r->flags & RE2JIT_ANCHOR_START))
             if (rejit_thread_entry(r) == NULL) {
                 // XOO < *ac was completely screwed out of memory
                 //        and nothing can fix that!!*
             }
-        }
     }
 }
 
 
 int rejit_thread_match(struct rejit_threadset_t *r)
 {
-    if ((r->flags & RE2JIT_ANCHOR_END) && r->length) {
+    if ((r->flags & RE2JIT_ANCHOR_END) && r->length)
         // No, it did not. Not EOF yet.
         return 0;
-    }
 
     struct rejit_thread_t *t = rejit_thread_fork(r);
 
@@ -221,10 +206,9 @@ int rejit_thread_wait(struct rejit_threadset_t *r, rejit_entry_t entry, size_t s
 {
     struct rejit_thread_t *t = rejit_thread_fork(r);
 
-    if (t == NULL) {
+    if (t == NULL)
         // :33 < oh shit
         return 0;
-    }
 
     t->entry = entry;
     t->wait = shift - 1;
@@ -235,9 +219,8 @@ int rejit_thread_wait(struct rejit_threadset_t *r, rejit_entry_t entry, size_t s
 
 int rejit_thread_result(struct rejit_threadset_t *r, int **groups)
 {
-    if (r->all_threads.first == rejit_list_end(&r->all_threads)) {
+    if (r->all_threads.first == rejit_list_end(&r->all_threads))
         return 0;
-    }
 
     *groups = r->all_threads.first->groups;
     return 1;
