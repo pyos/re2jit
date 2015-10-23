@@ -10,3 +10,5 @@ FIXED_TEST("(cat|dog)(cat|dog)(?:\\1|\\2)", ANCHOR_START, "catcatcat", true, "ca
 FIXED_TEST("(cat|dog)(cat|dog)(?:\\1|\\2)", ANCHOR_START, "catdogcat", true, "catdogcat", "cat", "dog");
 FIXED_TEST("(cat|dog)(cat|dog)(?:\\1|\\2)", ANCHOR_START, "catdogdog", true, "catdogdog", "cat", "dog");
 FIXED_TEST("(cat|dog)(cat|dog)(?:\\1|\\2)", ANCHOR_START, "catcatdog", false);
+
+REGEX_3SAT_TEST(3, true, {{1, 2, -3}, {1, -2, 3}, {-1, -2, 3}, {-1, -2, -3}});
