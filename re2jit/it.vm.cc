@@ -37,82 +37,85 @@ struct re2jit::native
 
                 nfa->visited[i / 8] |= 1 << (i % 8);
 
-                RE2JIT_WITH_INST(_prog, i,
-                    vec, for (auto op = vec.begin(); op != vec.end(); ++op) switch (op->opcode()) {
-                        case re2jit::inst::kUnicodeType: {
-                            uint64_t x = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length);
+                auto op  = _prog->inst(i);
+                auto vec = re2jit::is_extcode(_prog, op);
 
-                            if (0 == x)
-                                // not a valid utf-8 character
-                                break;
+                for (auto& op : vec) switch (op.opcode())
+                {
+                    case re2jit::inst::kUnicodeType: {
+                        uint64_t x = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length);
 
-                            rejit_uni_type_t cls = UNICODE_CODEPOINT_TYPE[x & 0xFFFFFFFF];
-
-                            if ((cls & UNICODE_GENERAL) != op->arg())
-                                break;
-
-                            rejit_thread_wait(nfa, op->out(), x >> 32);
+                        if (0 == x)
+                            // not a valid utf-8 character
                             break;
-                        }
+
+                        rejit_uni_type_t cls = UNICODE_CODEPOINT_TYPE[x & 0xFFFFFFFF];
+
+                        if ((cls & UNICODE_GENERAL) != op.arg())
+                            break;
+
+                        rejit_thread_wait(nfa, op.out(), x >> 32);
+                        break;
                     }
+                }
 
-                  , op, switch (op->opcode()) {
-                        case re2::kInstAltMatch:
-                        case re2::kInstAlt:
-                            stack[stkid++] = op->out1();
-                            stack[stkid++] = op->out();
+                if (!vec.size()) switch (op->opcode())
+                {
+                    case re2::kInstAltMatch:
+                    case re2::kInstAlt:
+                        stack[stkid++] = op->out1();
+                        stack[stkid++] = op->out();
+                        break;
+
+                    case re2::kInstByteRange: {
+                        if (!nfa->length)
                             break;
 
-                        case re2::kInstByteRange: {
-                            if (!nfa->length)
-                                break;
+                        uint8_t c = nfa->input[0];
 
-                            uint8_t c = nfa->input[0];
-
-                            if (op->foldcase() && 'A' <= c && c <= 'Z') {
-                                c += 'a' - 'A';
-                            }
-
-                            if (c < op->lo() || c > op->hi()) {
-                                break;
-                            }
-
-                            rejit_thread_wait(nfa, op->out(), 1);
-                            break;
+                        if (op->foldcase() && 'A' <= c && c <= 'Z') {
+                            c += 'a' - 'A';
                         }
 
-                        case re2::kInstCapture:
-                            if ((size_t) op->cap() < nfa->groups) {
-                                restore[rstid++] = t->groups[op->cap()];
-                                stack[stkid++] = -op->cap();
-
-                                t->groups[op->cap()] = nfa->offset;
-                            }
-
-                            stack[stkid++] = op->out();
+                        if (c < op->lo() || c > op->hi()) {
                             break;
+                        }
 
-                        case re2::kInstEmptyWidth:
-                            if (!(op->empty() & ~(nfa->empty)))
-                                stack[stkid++] = op->out();
-
-                            break;
-
-                        case re2::kInstNop:
-                            stack[stkid++] = op->out();
-                            break;
-
-                        case re2::kInstMatch:
-                            if (rejit_thread_match(nfa))
-                                // this match is preferred to whatever is still on stack.
-                                stkid = 0;
-
-                            break;
-
-                        case re2::kInstFail:
-                            break;
+                        rejit_thread_wait(nfa, op->out(), 1);
+                        break;
                     }
-                );
+
+                    case re2::kInstCapture:
+                        if ((size_t) op->cap() < nfa->groups) {
+                            restore[rstid++] = t->groups[op->cap()];
+                            stack[stkid++] = -op->cap();
+
+                            t->groups[op->cap()] = nfa->offset;
+                        }
+
+                        stack[stkid++] = op->out();
+                        break;
+
+                    case re2::kInstEmptyWidth:
+                        if (!(op->empty() & ~(nfa->empty)))
+                            stack[stkid++] = op->out();
+
+                        break;
+
+                    case re2::kInstNop:
+                        stack[stkid++] = op->out();
+                        break;
+
+                    case re2::kInstMatch:
+                        if (rejit_thread_match(nfa))
+                            // this match is preferred to whatever is still on stack.
+                            stkid = 0;
+
+                        break;
+
+                    case re2::kInstFail:
+                        break;
+                }
             }
         }
     }

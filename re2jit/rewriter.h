@@ -173,17 +173,6 @@ namespace re2jit
 
         return rs;
     }
-
-
-    #define RE2JIT_WITH_INST(prog, i, vec, ext, opv, normal) do {          \
-        auto opv = (prog)->inst(i);                                        \
-        auto vec = re2jit::is_extcode(prog, opv);                          \
-        if (vec.size()) {                                                  \
-            ext;                                                           \
-        } else {                                                           \
-            normal;                                                        \
-        }                                                                  \
-    } while (0)
 };
 
 #endif
