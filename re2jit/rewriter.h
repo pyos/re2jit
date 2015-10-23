@@ -13,20 +13,20 @@
 namespace re2jit
 {
     struct inst {
-        enum OPCODE
+        enum code : uint8_t
         {
             kUnicodeType,
             kBackReference,
         };
 
-        inst(uint8_t opcode, uint16_t arg, ssize_t out) : opcode_(opcode), arg_(arg), out_(out) {}
+        inst(code opcode, uint16_t arg, ssize_t out) : opcode_(opcode), arg_(arg), out_(out) {}
 
-        uint8_t  opcode() const { return opcode_; }
+        code     opcode() const { return opcode_; }
         uint16_t arg()    const { return arg_; }
         ssize_t  out()    const { return out_; }
 
         protected:
-            uint8_t  opcode_;
+            code     opcode_;
             uint16_t arg_;
             ssize_t  out_;
     };
@@ -136,7 +136,7 @@ namespace re2jit
             case re2::kInstByteRange: {
                 if ((in->lo() & 0xC0u) == 0x80u && (in->hi() & 0xC0u) == 0x80u) {
                     for (uint8_t a = in->lo(); a <= in->hi(); a++) {
-                        rs.emplace_back(op, arg | (a & 0x3F), in->out());
+                        rs.emplace_back((inst::code) op, arg | (a & 0x3F), in->out());
                     }
 
                     if (!stptr)

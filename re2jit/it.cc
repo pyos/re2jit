@@ -48,7 +48,7 @@ namespace re2jit
         _bytecode = _regexp->CompileToProg(8 << 20);
 
         if (_bytecode == NULL) {
-            _error = "out of memory";  // 8 << 20 was not enough.
+            _error = "out of memory: could not compile regexp";  // 8 << 20 was not enough.
             return;
         }
 
@@ -62,7 +62,7 @@ namespace re2jit
         #endif
 
         if (_pure_re2 && RE2JIT_DFA_CUTOFF) {
-            _original = new RE2(_pattern, RE2::Quiet);
+            _original = new RE2(pattern, RE2::Quiet);
 
             if (!_original->ok()) {
                 delete _original;  // Don't care, won't use DFA.
