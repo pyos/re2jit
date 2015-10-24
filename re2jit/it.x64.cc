@@ -23,16 +23,14 @@ struct re2jit::native
 
         for (auto& ref : labels) ref = &code.mark();
 
-        // If the program starts with a failing opcode, we can use that to redirect
-        // all conditional rets instead of jumping over them.
-        as::label& fail    = code.mark();
-        as::label& succeed = code.mark();
+        as::label& fail    = code.mark();  // return 0, meaning did not enter an accepting state
+        as::label& succeed = code.mark();  // "fail" without zeroing return value
         code.xor_(as::eax, as::eax).mark(succeed).ret();
 
-        // How many transitions have the i-th opcode as a target. We have to maintain
-        // a bit vector of visited states to avoid going into an infinite loop; however,
-        // opcodes with indegree 1 can never be at the start of a loop, so we can avoid
-        // some memory lookups on these.
+        // How many transitions have the i-th opcode as a target.
+        // Opcodes with indegree 1 don't need to be tracked in the bit vector
+        // (as there is only one way to reach them and we've already checked that).
+        // Opcodes with indegree 0 are completely unreachable, no need to compile those.
         std::vector< unsigned > indegree(n);
 
         ssize_t *stack = new ssize_t[prog->size()];
@@ -75,9 +73,9 @@ struct re2jit::native
 
         for (i = 0; i < n; i++) if (indegree[i]) {
             code.mark(*labels[i]);
-            // Each opcode should conform to System V ABI calling convention.
-            //   %rdi = struct rejit_threadset_t *nfa -- argument
-            //   %rax = int has_matched               -- return value
+            // Each opcode should conform to the System V ABI calling convention.
+            //   argument 1: %rdi = struct rejit_threadset_t *nfa
+            //   return reg: %rax = 1 iff found a match somewhere
             auto op  = prog->inst(i);
             auto vec = re2jit::is_extcode(prog, op);
 
@@ -179,7 +177,7 @@ struct re2jit::native
                                 .cmp  ((as::i8) (op->hi() - op->lo()), as::cl).jmp(fail, as::more_u);
                     }
 
-                    code// return rejit_thread_wait(nfa, &out, 1);
+                    code// return rejit_thread_wait(nfa, &out, len);
                         .mov  (*labels[seq.back()->out()], as::rsi)
                         .mov  ((as::i32) seq.size(), as::edx)
                         .jmp  ((void *) &rejit_thread_wait);
