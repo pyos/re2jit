@@ -61,6 +61,13 @@ struct re2jit::native
                     case re2::kInstFail:
                     case re2::kInstMatch:
                         break;
+
+                    case re2::kInstByteRange:
+                        if (!indegree[op->out()])
+                            *stptr++ = op->out();
+                        // subsequent byte ranges are concatenated into one block of code
+                        if (prog->inst(op->out())->opcode() != re2::kInstByteRange)
+                            indegree[op->out()]++;
                 }
         }
 
@@ -137,39 +144,48 @@ struct re2jit::native
 
                     break;
 
-                case re2::kInstByteRange:
-                    code// if (nfa->length == 0) return;
-                        .cmp  ((as::i8) 0, as::mem{as::rdi} + &NFA->length)
-                        .jmp  (fail, as::equal)
-                        // cl = nfa->input[0];
-                        .mov  (as::mem{as::rdi} + &NFA->input, as::rax)
-                        .mov  (as::mem{as::rax}, as::cl);
+                case re2::kInstByteRange: {
+                    std::vector<re2::Prog::Inst *> seq{ op };
 
-                    if (op->foldcase()) {
-                        as::label& skip_caseconv = code.mark();
+                    while ((op = prog->inst(op->out()))->opcode() == re2::kInstByteRange)
+                        seq.push_back(op);
 
-                        code// if ('A' <= cl && cl <= 'Z') cl = cl - 'A' + 'a';
-                            .cmp  ((as::i8) 'A', as::cl).jmp(skip_caseconv, as::less_u)
-                            .cmp  ((as::i8) 'Z', as::cl).jmp(skip_caseconv, as::more_u)
-                            .add  ((as::i8) ('a' - 'A'), as::cl)
-                            .mark (skip_caseconv);
+                    code// if (nfa->length < len) return; else rax = nfa->input;
+                        .cmp  ((as::i32) seq.size(), as::mem{as::rdi} + &NFA->length)
+                        .jmp  (fail, as::less_u)
+                        .mov  (as::mem{as::rdi} + &NFA->input, as::rax);
+
+                    for (auto op : seq) {
+                        code// cl = *rax++;
+                            .mov  (as::mem{as::rax}, as::cl)
+                            .inc  (as::rax);
+
+                        if (op->foldcase()) {
+                            as::label& skip_caseconv = code.mark();
+
+                            code// if ('A' <= cl && cl <= 'Z') cl = cl - 'A' + 'a';
+                                .cmp  ((as::i8) 'A', as::cl).jmp(skip_caseconv, as::less_u)
+                                .cmp  ((as::i8) 'Z', as::cl).jmp(skip_caseconv, as::more_u)
+                                .add  ((as::i8) ('a' - 'A'), as::cl)
+                                .mark (skip_caseconv);
+                        }
+
+                        if (op->hi() == op->lo())
+                            code// if (cl != lo) return;
+                                .cmp((as::i8) op->lo(), as::cl).jmp(fail, as::not_equal);
+                        else
+                            code// if (cl < lo || hi < cl) return;
+                                .sub  ((as::i8)  op->lo(),             as::cl)
+                                .cmp  ((as::i8) (op->hi() - op->lo()), as::cl).jmp(fail, as::more_u);
                     }
 
-                    if (op->hi() == op->lo())
-                        code// if (cl != lo) return;
-                            .cmp((as::i8) op->lo(), as::cl).jmp(fail, as::not_equal);
-
-                    else
-                        code// if (cl < lo || hi < cl) return;
-                            .sub  ((as::i8)  op->lo(),             as::cl)
-                            .cmp  ((as::i8) (op->hi() - op->lo()), as::cl).jmp(fail, as::more_u);
-
                     code// return rejit_thread_wait(nfa, &out, 1);
-                        .mov  (*labels[op->out()], as::rsi)
-                        .mov  (1u, as::edx)
+                        .mov  (*labels[seq.back()->out()], as::rsi)
+                        .mov  ((as::i32) seq.size(), as::edx)
                         .jmp  ((void *) &rejit_thread_wait);
 
                     break;
+                }
 
                 case re2::kInstCapture:
                     code// if (nfa->groups <= cap) goto out;

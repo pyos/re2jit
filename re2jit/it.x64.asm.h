@@ -100,6 +100,7 @@ struct as
     as& cmp   (i32 a, mem b) { return rex(0, 0, b).imm8(0x81).modrm(7, b).imm32(a) ; }
     as& cmp   (r64 a, mem b) { return rex(1, a, b).imm8(0x39).modrm(a, b)          ; }
     as& cmpsb (            ) { return              imm8(0xa6)                      ; }
+    as& inc   (       r64 b) { return rex(1, 0, b).imm8(0xff).modrm(0, b)          ; }
     as& jmp   (i32 a       ) { return              imm8(0xe9).            imm32(a) ; }
     as& jmp   (LAB a       ) { return              imm8(0xe9).            imm32(a) ; }
     as& jmp   (i32 a,  i8 b) { return   imm8(0x0f).imm8(0x80 | b).        imm32(a) ; }
