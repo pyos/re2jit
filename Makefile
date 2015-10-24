@@ -76,11 +76,11 @@ clean:
 	rm -rf obj
 
 
-re2: .gitmodules
+re2/.git: .gitmodules
 	git submodule update --init re2
 
 
-re2/obj/libre2.a: re2 .git/modules/re2/refs/heads/master
+re2/obj/libre2.a: re2/.git .git/modules/re2/refs/heads/master
 	$(MAKE) -C re2 obj/libre2.a
 
 
