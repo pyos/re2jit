@@ -87,20 +87,20 @@ struct re2jit::native
                     .or_  ((as::i8) (1 << (i % 8)), as::mem{as::rsi} + i / 8);
 
             if (vec.size()) {
-                size_t i = 0;
                 std::vector< as::label* > options(vec.size() - 1);
 
-                for (auto& op : vec) {
-                    as::label* lb;
-
+                for (size_t i = vec.size(); i; ) {
+                    if (i != vec.size())
+                        code.mark(*options[i]);
+                    // alternate between all opcodes in `vec`
+                    auto& op = vec[--i];
+                    // code is emitted in reverse priority order within this loop.
+                    // first call the next opcode (it has higher priority), and only then
+                    // evaluate this one.
                     if (i != 0)
-                        code.mark(*options[i - 1]);
-
-                    if (++i != vec.size()) {
-                        code.push  (as::rdi).call  (*(lb = &code.mark()))
-                            .pop   (as::rdi).jmp   (*(options[i - 1] = &code.mark()));
-                        code.mark(*lb);
-                    }
+                        code.push  (as::rdi)
+                            .call  (*(options[i - 1] = &code.mark()))
+                            .pop   (as::rdi);
 
                     switch (op.opcode()) {
                         case re2jit::inst::kUnicodeType:
