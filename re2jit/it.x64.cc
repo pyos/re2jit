@@ -19,13 +19,11 @@ struct re2jit::native
         size_t n = prog->size();
 
         as code;
-        std::vector< as::label* > labels(n);
+        std::vector<as::label> labels(n);
 
-        for (auto& ref : labels) ref = &code.mark();
-
-        as::label& fail    = code.mark();  // return 0, meaning did not enter an accepting state
-        as::label& succeed = code.mark();  // "fail" without zeroing return value
-        code.xor_(as::eax, as::eax).mark(succeed).ret();
+        as::label fail;  // return 0, meaning did not enter an accepting state
+        as::label succeed;  // return 1, meaning there was a match somewhere
+        code.mark(fail).xor_(as::eax, as::eax).mark(succeed).ret();
 
         // How many transitions have the i-th opcode as a target.
         // Opcodes with indegree 1 don't need to be tracked in the bit vector
@@ -72,7 +70,7 @@ struct re2jit::native
         delete[] stack;
 
         for (i = 0; i < n; i++) if (indegree[i]) {
-            code.mark(*labels[i]);
+            code.mark(labels[i]);
             // Each opcode should conform to the System V ABI calling convention.
             //   argument 1: %rdi = struct rejit_threadset_t *nfa
             //   return reg: %rax = 1 iff found a match somewhere
@@ -87,11 +85,11 @@ struct re2jit::native
                     .or_  ((as::i8) (1 << (i % 8)), as::mem{as::rsi} + i / 8);
 
             if (vec.size()) {
-                std::vector< as::label* > options(vec.size() - 1);
+                std::vector<as::label> options(vec.size() - 1);
 
                 for (size_t i = vec.size(); i; ) {
                     if (i != vec.size())
-                        code.mark(*options[i]);
+                        code.mark(options[i]);
                     // alternate between all opcodes in `vec`
                     auto& op = vec[--i];
                     // code is emitted in reverse priority order within this loop.
@@ -99,7 +97,7 @@ struct re2jit::native
                     // evaluate this one.
                     if (i != 0)
                         code.push  (as::rdi)
-                            .call  (*(options[i - 1] = &code.mark()))
+                            .call  (options[i - 1])
                             .pop   (as::rdi);
 
                     switch (op.opcode()) {
@@ -108,7 +106,7 @@ struct re2jit::native
                                 .push (as::rdi)
                                 .mov  (as::mem{as::rdi} + &NFA->length, as::rsi)
                                 .mov  (as::mem{as::rdi} + &NFA->input,  as::rdi)
-                                .call ((void *) &rejit_read_utf8)
+                                .call (&rejit_read_utf8)
                                 .pop  (as::rdi)
                                 // if ((utf8_length = utf8_chr >> 32) == 0) return;
                                 .mov  (as::rax, as::rdx)
@@ -121,8 +119,8 @@ struct re2jit::native
                                 .and_ ((as::i8) UNICODE_GENERAL, as::cl)
                                 .cmp  ((as::i8) op.arg(), as::cl).jmp(fail, as::not_equal)
                                 // return rejit_thread_wait(nfa, &out, utf8_length);
-                                .mov  (*labels[op.out()], as::rsi)
-                                .jmp  ((void *) &rejit_thread_wait);
+                                .mov  (labels[op.out()], as::rsi)
+                                .jmp  (&rejit_thread_wait);
 
                             break;
                     }
@@ -132,13 +130,13 @@ struct re2jit::native
                 case re2::kInstAlt:
                     code// if (out(nfa)) return 1;
                         .push  (as::rdi)
-                        .call  (*labels[op->out()])
+                        .call  (labels[op->out()])
                         .pop   (as::rdi)
                         .test  (as::eax, as::eax).jmp(succeed, as::not_zero);
 
                     if ((size_t) op->out1() != i + 1)
                         // else goto out1;
-                        code.jmp(*labels[op->out1()]);
+                        code.jmp(labels[op->out1()]);
 
                     break;
 
@@ -159,7 +157,7 @@ struct re2jit::native
                             .inc  (as::rax);
 
                         if (op->foldcase()) {
-                            as::label& skip_caseconv = code.mark();
+                            as::label skip_caseconv;
 
                             code// if ('A' <= cl && cl <= 'Z') cl = cl - 'A' + 'a';
                                 .cmp  ((as::i8) 'A', as::cl).jmp(skip_caseconv, as::less_u)
@@ -178,9 +176,9 @@ struct re2jit::native
                     }
 
                     code// return rejit_thread_wait(nfa, &out, len);
-                        .mov  (*labels[seq.back()->out()], as::rsi)
+                        .mov  (labels[seq.back()->out()], as::rsi)
                         .mov  ((as::i32) seq.size(), as::edx)
-                        .jmp  ((void *) &rejit_thread_wait);
+                        .jmp  (&rejit_thread_wait);
 
                     break;
                 }
@@ -188,7 +186,7 @@ struct re2jit::native
                 case re2::kInstCapture:
                     code// if (nfa->groups <= cap) goto out;
                         .cmp  ((as::i32) op->cap(), as::mem{as::rdi} + &NFA->groups)
-                        .jmp  (*labels[op->out()], as::less_equal_u)
+                        .jmp  (labels[op->out()], as::less_equal_u)
                         // esi = nfa->running->groups[cap]; nfa->running->groups[cap] = nfa->offset;
                         .mov  (as::mem{as::rdi} + &NFA->running, as::rcx)
                         .mov  (as::mem{as::rdi} + &NFA->offset,  as::rax)
@@ -197,7 +195,7 @@ struct re2jit::native
                         // eax = out(nfa);
                         .push (as::rdi)
                         .push (as::rsi)
-                        .call (*labels[op->out()])
+                        .call (labels[op->out()])
                         .pop  (as::rsi)
                         .pop  (as::rdi)
                         // nfa->running->groups[cap] = esi; return eax;
@@ -215,20 +213,20 @@ struct re2jit::native
 
                     if ((size_t) op->out() != i + 1)
                         // else goto out;
-                        code.jmp(*labels[op->out()]);
+                        code.jmp(labels[op->out()]);
 
                     break;
 
                 case re2::kInstNop:
                     if ((size_t) op->out() != i + 1)
                         // goto out;
-                        code.jmp(*labels[op->out()]);
+                        code.jmp(labels[op->out()]);
 
                     break;
 
                 case re2::kInstMatch:
                     // return rejit_thread_match(nfa);
-                    code.jmp((void *) &rejit_thread_match);
+                    code.jmp(&rejit_thread_match);
                     break;
 
                 case re2::kInstFail:

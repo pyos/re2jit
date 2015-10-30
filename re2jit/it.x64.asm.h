@@ -1,25 +1,24 @@
-// this is complete bullshit.
+// A simple x86-64 assembler and linker.
+//   http://wiki.osdev.org/X86-64_Instruction_Encoding
+//   http://ref.x86asm.net/coder64-abc.html
 struct as
 {
     typedef uint8_t  i8;
     typedef uint32_t i32;
     typedef uint64_t i64;
+    typedef  int32_t s32;
 
-    // http://wiki.osdev.org/X86-64_Instruction_Encoding
-    // http://ref.x86asm.net/coder64-abc.html
     enum rb  : i8 {  al,  cl,  dl,  bl, };
- // enum r16 is slow useless shit. use 32-bit registers.
     enum r32 : i8 { eax, ecx, edx, ebx, esp, ebp, esi, edi, };
     enum r64 : i8 { rax, rcx, rdx, rbx, rsp, rbp, rsi, rdi, r8, r9, r10, r11, r12, r13, r14, r15, rip = 0x80 | rbp };
 
-    enum cond : i8 {
-        less_u       = 0x2,  // note that `x` is opposite of `x ^ 1`
-        more_equal_u = 0x3,  // pass as second argument to `jmp` for a conditional jump
+    enum cond : i8  // pass as second argument to jmp to create a conditional jump.
+    {
+        less_u       = 0x2,
+        more_equal_u = 0x3,
         equal        = 0x4,
-        equal_u      = equal,
         zero         = equal,
         not_equal    = 0x5,
-        not_equal_u  = not_equal,
         not_zero     = not_equal,
         less_equal_u = 0x6,
         more_u       = 0x7,
@@ -29,62 +28,59 @@ struct as
         more         = 0xf,
     };
 
-    struct mem { int32_t disp; r64 base;  // `+ index * offset` not supported.
-           // as::mem{as::rcx}      --  (%rcx)
-           // as::mem{as::rcx} + 5  -- 5(%rcx)
-           explicit mem(r64 r)                : disp(0), base(r) {}
-                    mem(r64 r, int32_t d)     : disp(d), base(r) {}
-           mem operator + (const void *off) { return mem { base, disp + (int32_t) (uint64_t) off }; }
-           mem operator + (int32_t off) { return mem { base, disp + off }; }
-           mem operator - (int32_t off) { return mem { base, disp - off }; } };
-
-    struct label
+    struct mem  // mem{rcx} + 5 -- 5(%rcx) in at&t syntax
     {
-        size_t offset;
-        std::vector<size_t> abs64;  // where to link references to this label
-        std::vector<size_t> rel32;  // (this one is relative to position + 4)
-        explicit label(size_t off) : offset(off) {}
+        s32 disp;  // `disp(base, index, scale)` not supported.
+        r64 base;
+        explicit mem(r64 _base, s32 _disp = 0) : disp(_disp), base(_base) {}
+
+        template <typename T>
+        mem operator + (T  *ptr) { return mem { base, disp + (s32) (i64) ptr }; }
+        mem operator + (s32 off) { return mem { base, disp + off }; }
+        mem operator - (s32 off) { return mem { base, disp - off }; }
     };
 
-    as() : _start(NULL), _last(NULL), _end(NULL) {}
-   ~as() { free(_start); }
+    struct target { size_t offset;
+                    std::vector<size_t> abs64;
+                    std::vector<size_t> rel32; };
 
-    size_t size() const { return _last - _start; }
+    // linker needs to keep track of all existing targets, so outside code can only
+    // operate with `target *`s (the actual targets are stored in a vector below).
+    // unlike `typedef target* label`, this thin wrapper ensures that uninitialized
+    // labels are set to NULL.
+    struct label { target* tg = NULL;
+                   target* operator->() { return tg; } };
 
-    label& mark()
+    size_t size() const
     {
-        _labels.emplace_back(size());
-        return _labels.back();
-    }
-
-    as& mark(label& lb) {
-        lb.offset = size();
-        return *this;
+        return _code.size();
     }
 
     void write(void *base) const
     {
-        uint8_t *tg = (uint8_t *) memcpy(base, _start, size());
+        i8 *out = (i8 *) memcpy(base, &_code[0], size());
 
-        for (const label& lb : _labels) {
-            uint8_t *t = &tg[lb.offset];
+        for (const auto& tg : _targets) {
+            i64 abs = (i64) (out + tg.offset);
+            s32 rel;
 
-            for (size_t ref : lb.abs64)
-                memcpy(&tg[ref], &t, sizeof(t));
+            for (size_t ref : tg.abs64)
+                memcpy(&out[ref], &abs, 8);
 
-            for (size_t ref : lb.rel32) {
-                int32_t r = t - &tg[ref + 4];
-                memcpy(&tg[ref], &r, sizeof(r));
-            }
+            for (size_t ref : tg.rel32)
+                memcpy(&out[ref], &(rel = tg.offset - ref - 4), 4);
         }
     }
 
     #define LAB label&
-    as& imm8  (i8  i) { memcpy(allocate(), &i, 1); _last += 1; return *this; }
-    as& imm32 (i32 i) { memcpy(allocate(), &i, 4); _last += 4; return *this; }
-    as& imm64 (i64 i) { memcpy(allocate(), &i, 8); _last += 8; return *this; }
-    as& imm32 (LAB i) { i.rel32.push_back(size()); return imm32(0); }
-    as& imm64 (LAB i) { i.abs64.push_back(size()); return imm64(0); }
+    as& imm8  (i8  i) { append(&i, 1); return *this; }
+    as& imm32 (i32 i) { append(&i, 4); return *this; }
+    as& imm64 (i64 i) { append(&i, 8); return *this; }
+
+    as& mark  (LAB i) { init_label(i)->offset = size(); return *this; }
+    as& rel32 (LAB i) { init_label(i)->rel32.push_back(size()); return imm32(0); }
+    as& abs64 (LAB i) { init_label(i)->abs64.push_back(size()); return imm64(0); }
+
     //         src    dst             REX prefix   opcode     ModR/M      immediate
     //                /cond           [64-bit mode]           [+ disp]
     as& add   ( i8 a,  rb b) { return              imm8(0x80).modrm(0, b).imm8 (a) ; }
@@ -92,7 +88,7 @@ struct as
     as& add   (r64 a, r64 b) { return rex(1, a, b).imm8(0x01).modrm(a, b)          ; }
     as& and_  ( i8 a,  rb b) { return              imm8(0x80).modrm(4, b).imm8 (a) ; }
     as& call  (i32 a       ) { return              imm8(0xe8).            imm32(a) ; }
-    as& call  (LAB a       ) { return              imm8(0xe8).            imm32(a) ; }
+    as& call  (LAB a       ) { return              imm8(0xe8).            rel32(a) ; }
     as& call  (       r64 b) { return rex(0, 0, b).imm8(0xff).modrm(2, b)          ; }
     as& cmp   ( i8 a,  rb b) { return              imm8(0x80).modrm(7, b).imm8 (a) ; }
     as& cmp   ( i8 a, r32 b) { return              imm8(0x83).modrm(7, b).imm8 (a) ; }
@@ -102,14 +98,14 @@ struct as
     as& cmpsb (            ) { return              imm8(0xa6)                      ; }
     as& inc   (       r64 b) { return rex(1, 0, b).imm8(0xff).modrm(0, b)          ; }
     as& jmp   (i32 a       ) { return              imm8(0xe9).            imm32(a) ; }
-    as& jmp   (LAB a       ) { return              imm8(0xe9).            imm32(a) ; }
+    as& jmp   (LAB a       ) { return              imm8(0xe9).            rel32(a) ; }
     as& jmp   (i32 a,  i8 b) { return   imm8(0x0f).imm8(0x80 | b).        imm32(a) ; }
-    as& jmp   (LAB a,  i8 b) { return   imm8(0x0f).imm8(0x80 | b).        imm32(a) ; }
+    as& jmp   (LAB a,  i8 b) { return   imm8(0x0f).imm8(0x80 | b).        rel32(a) ; }
     as& jmp   (       r64 b) { return rex(0, 0, b).imm8(0xff).modrm(4, b)          ; }
     as& mov   (i32 a, r32 b) { return              imm8(0xb8 | b).        imm32(a) ; }
     as& mov   (i32 a, r64 b) { return rex(1, 0, b).imm8(0xc7).modrm(0, b).imm32(a) ; }
     as& mov   (i64 a, r64 b) { return rex(1, 0, b).imm8(0xb8 | b).        imm64(a) ; }
-    as& mov   (LAB a, r64 b) { return rex(1, 0, b).imm8(0xb8 | b).        imm64(a) ; }
+    as& mov   (LAB a, r64 b) { return rex(1, 0, b).imm8(0xb8 | b).        abs64(a) ; }
     as& mov   (r32 a, r32 b) { return              imm8(0x89).modrm(a, b)          ; }
     as& mov   (r64 a, r64 b) { return rex(1, a, b).imm8(0x89).modrm(a, b)          ; }
     as& mov   (mem a,  rb b) { return rex(0, 0, a).imm8(0x8a).modrm(a, b)          ; }
@@ -135,13 +131,28 @@ struct as
     as& test  ( i8 a, mem b) { return rex(0, 0, b).imm8(0xf6).modrm(0, b).imm8 (a) ; }
     as& test  (i32 a, mem b) { return rex(0, 0, b).imm8(0xf7).modrm(0, b).imm32(a) ; }
     as& xor_  (r32 a, r32 b) { return              imm8(0x31).modrm(a, b)          ; }
+
     // shorthands for indirect jumps to 64-bit (ok, 48-bit) pointers.
-    // c++ still complains if that pointer is a function pointer, though.
-    as& jmp   (void *p) { return mov((uint64_t) p, rax).jmp  (rax); }
-    as& call  (void *p) { return mov((uint64_t) p, rax).call (rax); }
+    template <typename T> as& jmp   (T *p) { return mov((i64) p, rax).jmp  (rax); }
+    template <typename T> as& call  (T *p) { return mov((i64) p, rax).call (rax); }
     #undef LAB
 
     protected:
+        std::vector<i8> _code;
+        std::deque<target> _targets;
+
+        void append(void *p, size_t sz)
+        {
+            _code.insert(_code.end(), (i8 *) p, (i8 *) p + sz);
+        }
+
+        target* init_label(label& i)
+        {
+            if (i.tg != NULL) return i.tg;
+            _targets.emplace_back();
+            return i.tg = &_targets.back();
+        }
+
         as& rex(i8 w, i8 r, mem b) { return rex(w, r, b.base); }
         as& rex(i8 w, mem b, i8 r) { return rex(w, r, b.base); }
         as& rex(i8 w, i8 r /*, i8 x -- index register, not supported */, i8 b)
@@ -159,8 +170,8 @@ struct as
         as& modrm( i8 a, mem b) { return imm8((a & 7) << 3 | (b.base & 7)).modrm(b); }
         as& modrm(mem a,  i8 b) { return imm8((b & 7) << 3 | (a.base & 7)).modrm(a); }
         as& modrm(mem m) {
-            uint8_t *ref = _last - 1;
-            // *ref is the ModR/M byte:
+            i8& ref = _code[_code.size() - 1];
+            // ref is the ModR/M byte:
             //    0 1 2 3 4 5 6 7
             //    | | |   | \---/----- register 1
             //    | | \---/----- opcode extension (only for single-register opcodes) or register 2
@@ -179,32 +190,11 @@ struct as
                 return *this;
 
             if ((int8_t) m.disp == m.disp) {
-                *ref |= 0x40;  // mode = 1 -- 8-bit displacement.
+                ref |= 0x40;  // mode = 1 -- 8-bit displacement.
                 return imm8((i8) m.disp);
             }
 
-            *ref |= 0x80;  // mode = 2 -- 32-bit displacement
+            ref |= 0x80;  // mode = 2 -- 32-bit displacement
             return imm32((i32) m.disp);
         }
-
-        uint8_t *allocate()
-        {
-            if (_end - _last < 8) {
-                uint8_t *r = (uint8_t *) realloc(_start, (_end - _start + 8) * 2);
-
-                if (r == NULL)
-                    throw std::runtime_error("out of memory");
-
-                _end   = r + (_end  - _start + 8) * 2;
-                _last  = r + (_last - _start);
-                _start = r;
-            }
-
-            return _last;
-        }
-
-        uint8_t *_start;
-        uint8_t *_last;
-        uint8_t *_end;
-        std::deque<label> _labels;
 };
