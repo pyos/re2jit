@@ -159,8 +159,8 @@ struct as
         {
             //     /--- fixed value
             //     |      /--- opcode is 64-bit
-            //     |      |         /--- additional bit for modr/m reg1
-            //     |      |         |               /--- same for reg2
+            //     |      |         /--- additional significant bit for modr/m reg2 field
+            //     |      |         |               /--- same for reg1 (see below)
             i8 f = 0x40 | w << 3 | (r & 8) >> 1 | (b & 8) >> 3;
             //          /--- REX with all zero flags is ignored
             return f == 0x40 ? *this : imm8(f);
