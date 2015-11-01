@@ -19,7 +19,7 @@
 
 namespace re2jit
 {
-    it::it(const re2::StringPiece& pattern) : _native(NULL), _bytecode(NULL), _x_forward(NULL), _x_reverse(NULL)
+    it::it(const re2::StringPiece& pattern, int max_mem) : _native(NULL), _bytecode(NULL), _x_forward(NULL), _x_reverse(NULL)
     {
         re2::RegexpStatus status;
 
@@ -37,10 +37,10 @@ namespace re2jit
             return;
         }
 
-        _bytecode = _regexp->CompileToProg(8 << 20);
+        _bytecode = _regexp->CompileToProg(max_mem / 2);
 
         if (_bytecode == NULL) {
-            _error = "out of memory: could not compile regexp";  // 8 << 20 was not enough.
+            _error = "out of memory: could not compile regexp";
             return;
         }
 
@@ -58,8 +58,8 @@ namespace re2jit
 
             if (r != NULL) {
                 // don't care if NULL, simply won't use DFA.
-                _x_forward = r->CompileToProg(8 << 19);
-                _x_reverse = r->CompileToReverseProg(8 << 19);
+                _x_forward = r->CompileToProg(max_mem / 4);
+                _x_reverse = r->CompileToReverseProg(max_mem / 4);
                              r->Decref();
             }
         }

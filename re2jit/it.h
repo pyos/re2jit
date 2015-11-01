@@ -10,12 +10,12 @@ namespace re2jit
 
     struct it
     {
-        it(const re2::StringPiece&);
+        it(const re2::StringPiece&, int max_mem = 8 << 21);
        ~it();
 
         it(const it&)  = delete;
         it(const it&&) = delete;
-        it& operator=(const it&)  = delete;
+        it& operator=(const it&) = delete;
 
         /* Find out whether the constructor finished successfully.
          * If not, `error()` should return a short description. */
