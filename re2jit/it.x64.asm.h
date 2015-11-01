@@ -189,7 +189,7 @@ struct as
                 // mode = 0 otherwise means `(reg1)`, i.e. no displacement
                 return *this;
 
-            if ((int8_t) m.disp == m.disp) {
+            if (-128 <= m.disp && m.disp < 128) {
                 ref |= 0x40;  // mode = 1 -- 8-bit displacement.
                 return imm8((i8) m.disp);
             }
