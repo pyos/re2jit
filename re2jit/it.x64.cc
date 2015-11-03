@@ -85,20 +85,8 @@ struct re2jit::native
                     .or_  ((as::i8) (1 << (i % 8)), as::mem{as::rsi} + i / 8);
 
             if (vec.size()) {
-                std::vector<as::label> options(vec.size() - 1);
-
-                for (size_t i = vec.size(); i; ) {
-                    if (i != vec.size())
-                        code.mark(options[i]);
-                    // alternate between all opcodes in `vec`
-                    auto& op = vec[--i];
-                    // code is emitted in reverse priority order within this loop.
-                    // first call the next opcode (it has higher priority), and only then
-                    // evaluate this one.
-                    if (i != 0)
-                        code.push  (as::rdi)
-                            .call  (options[i - 1])
-                            .pop   (as::rdi);
+                for (auto &op : vec) {
+                    as::label fail;
 
                     switch (op.opcode()) {
                         case re2jit::inst::kUnicodeType:
@@ -120,11 +108,17 @@ struct re2jit::native
                                 .cmp  ((as::i8) op.arg(), as::cl).jmp(fail, as::not_equal)
                                 // return rejit_thread_wait(nfa, &out, utf8_length);
                                 .mov  (labels[op.out()], as::rsi)
-                                .jmp  (&rejit_thread_wait);
+                                .push (as::rdi)
+                                .call (&rejit_thread_wait)
+                                .pop  (as::rdi);
 
                             break;
                     }
+
+                    code.mark(fail);
                 }
+
+                code.jmp(fail);
             } else switch (op->opcode()) {
                 case re2::kInstAltMatch:
                 case re2::kInstAlt:
