@@ -140,39 +140,34 @@ struct re2jit::native
                     while ((op = prog->inst(op->out()))->opcode() == re2::kInstByteRange)
                         seq.push_back(op);
 
-                    code// if (nfa->length < len) return; else rax = nfa->input;
-                        .cmp  ((as::i32) seq.size(), as::mem{as::rdi} + &NFA->length)
-                        .jmp  (fail, as::less_u)
-                        .mov  (as::mem{as::rdi} + &NFA->input, as::rax);
+                    // if (nfa->length < len) return; else rsi = nfa->input;
+                    code.cmp((as::i32) seq.size(), as::mem{as::rdi} + &NFA->length).jmp(fail, as::less_u)
+                        .mov(as::mem{as::rdi} + &NFA->input, as::rsi);
 
                     for (auto op : seq) {
-                        code// cl = *rax++;
-                            .mov  (as::mem{as::rax}, as::cl)
-                            .inc  (as::rax);
+                        code.mov(as::mem{as::rsi}, as::al)
+                            .add(as::i8{1}, as::rsi);
 
-                        if (op->foldcase()) {
-                            as::label skip_caseconv;
-
-                            code// if ('A' <= cl && cl <= 'Z') cl = cl - 'A' + 'a';
-                                .cmp  ((as::i8) 'A', as::cl).jmp(skip_caseconv, as::less_u)
-                                .cmp  ((as::i8) 'Z', as::cl).jmp(skip_caseconv, as::more_u)
-                                .add  ((as::i8) ('a' - 'A'), as::cl)
-                                .mark (skip_caseconv);
-                        }
+                        if (op->foldcase())
+                            // if ('A' <= al && al <= 'Z') al = al - 'A' + 'a';
+                            code.lea(as::mem{as::rax} - 'A', as::ecx)
+                                .lea(as::mem{as::rcx} + 'a', as::edx)
+                                .cmp('Z' - 'A', as::cl)
+                                .mov(as::edx, as::eax, as::less_equal_u);
 
                         if (op->hi() == op->lo())
-                            code// if (cl != lo) return;
-                                .cmp((as::i8) op->lo(), as::cl).jmp(fail, as::not_equal);
+                            // if (al != lo) return;
+                            code.cmp(op->lo(), as::al).jmp(fail, as::not_equal);
                         else
-                            code// if (cl < lo || hi < cl) return;
-                                .sub  ((as::i8)  op->lo(),             as::cl)
-                                .cmp  ((as::i8) (op->hi() - op->lo()), as::cl).jmp(fail, as::more_u);
+                            // if (al < lo || hi < al) return;
+                            code.sub(op->lo(),            as::al)
+                                .cmp(op->hi() - op->lo(), as::al).jmp(fail, as::more_u);
                     }
 
-                    code// return rejit_thread_wait(nfa, &out, len);
-                        .mov  (labels[seq.back()->out()], as::rsi)
-                        .mov  ((as::i32) seq.size(), as::edx)
-                        .jmp  (&rejit_thread_wait);
+                    // return rejit_thread_wait(nfa, &out, len);
+                    code.mov(labels[seq.back()->out()], as::rsi)
+                        .mov(seq.size(), as::edx)
+                        .jmp(&rejit_thread_wait);
 
                     break;
                 }
