@@ -115,7 +115,7 @@ struct re2jit::native
                             break;
                     }
 
-                    code.mark(fail);
+                    code.test(as::eax, as::eax).jmp(succeed, as::not_zero).mark(fail);
                 }
 
                 code.jmp(fail);
