@@ -9,11 +9,10 @@ static const struct rejit_thread_t    *THREAD = NULL;
 
 struct re2jit::native
 {
-    void *_code;
-    void *_entry;
+    void * _code;
     size_t _size;
 
-    native(re2::Prog *prog) : _code(NULL), _entry(NULL), _size(0)
+    native(re2::Prog *prog) : _code(NULL), _size(0)
     {
         size_t i;
         size_t n = prog->size();
@@ -23,7 +22,6 @@ struct re2jit::native
 
         as::label fail;  // return 0, meaning did not enter an accepting state
         as::label succeed;  // return 1, meaning there was a match somewhere
-        code.mark(fail).xor_(as::eax, as::eax).mark(succeed).ret();
 
         // How many transitions have the i-th opcode as a target.
         // Opcodes with indegree 1 don't need to be tracked in the bit vector
@@ -218,12 +216,14 @@ struct re2jit::native
             }
         }
 
+        code.mark(fail).xor_(as::eax, as::eax).mark(succeed).ret();
+
         delete[] stack;
 
-        as::i8 *target = (as::i8 *) mmap(NULL, code.size(), PROT_READ | PROT_WRITE,
-                                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        void *target = mmap(NULL, code.size(), PROT_READ | PROT_WRITE,
+                                               MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-        if (target == (as::i8 *) -1)
+        if (target == (void *) -1)
             return;
 
         if (!code.write(target) || mprotect(target, code.size(), PROT_READ | PROT_EXEC) == -1) {
@@ -231,9 +231,8 @@ struct re2jit::native
             return;
         }
 
-        _code  = target;
-        _entry = target + labels[prog->start()]->offset;
-        _size  = code.size();
+        _code = target;
+        _size = code.size();
     }
 
    ~native()
@@ -243,7 +242,7 @@ struct re2jit::native
 
     rejit_entry_t entry() const
     {
-        return (rejit_entry_t) _entry;
+        return (rejit_entry_t) _code;
     }
 
     void run(struct rejit_threadset_t *nfa) const
