@@ -175,20 +175,18 @@ struct re2jit::native
                     // if (nfa->groups <= cap) goto out;
                     code.cmp  (as::i32(op->cap()), as::mem(as::rdi) + &NFA->groups)
                         .jmp  (labels[op->out()], as::less_equal_u)
-                        // esi = nfa->running->groups[cap]; nfa->running->groups[cap] = nfa->offset;
+                    // esi = nfa->running->groups[cap]; nfa->running->groups[cap] = nfa->offset;
                         .mov  (as::mem(as::rdi) + &NFA->running, as::rcx)
                         .mov  (as::mem(as::rdi) + &NFA->offset,  as::eax)
                         .mov  (as::mem(as::rcx) + &THREAD->groups[op->cap()], as::esi)
                         .mov  (as::eax, as::mem(as::rcx) + &THREAD->groups[op->cap()])
-                        // eax = out(nfa);
-                        .push (as::rdi)
+                    // eax = out(nfa);
                         .push (as::rsi)
                         .push (as::rcx)
                         .call (labels[op->out()])
                         .pop  (as::rcx)
                         .pop  (as::rsi)
-                        .pop  (as::rdi)
-                        // nfa->running->groups[cap] = esi; return eax;
+                    // nfa->running->groups[cap] = esi; return eax;
                         .mov  (as::esi, as::mem(as::rcx) + &THREAD->groups[op->cap()])
                         .ret  ();
 
@@ -222,11 +220,10 @@ struct re2jit::native
             }
         }
 
-        uint8_t *target = (uint8_t *) mmap(0, code.size(),
-                                           PROT_READ | PROT_WRITE,
-                                           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        as::i8 *target = (as::i8 *) mmap(NULL, code.size(), PROT_READ | PROT_WRITE,
+                                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-        if (target == (uint8_t *) -1)
+        if (target == (as::i8 *) -1)
             return;
 
         code.write(target);
