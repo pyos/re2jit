@@ -226,9 +226,7 @@ struct re2jit::native
         if (target == (as::i8 *) -1)
             return;
 
-        code.write(target);
-
-        if (mprotect(target, code.size(), PROT_READ | PROT_EXEC) == -1) {
+        if (!code.write(target) || mprotect(target, code.size(), PROT_READ | PROT_EXEC) == -1) {
             munmap(target, code.size());
             return;
         }

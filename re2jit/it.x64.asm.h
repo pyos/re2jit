@@ -40,7 +40,7 @@ struct as
         mem operator - (s32 off) { return mem { base, disp - off }; }
     };
 
-    struct target { size_t offset;
+    struct target { size_t offset = -1;
                     std::vector<size_t> abs64;
                     std::vector<size_t> rel32; };
 
@@ -56,11 +56,14 @@ struct as
         return _code.size();
     }
 
-    void write(void *base) const
+    bool write(void *base) const
     {
         i8 *out = (i8 *) memcpy(base, &_code[0], size());
 
         for (const auto& tg : _targets) {
+            if (tg.offset == (size_t) -1)
+                return false;
+
             i64 abs = (i64) (out + tg.offset);
             s32 rel;
 
@@ -70,6 +73,8 @@ struct as
             for (size_t ref : tg.rel32)
                 memcpy(&out[ref], &(rel = tg.offset - ref - 4), 4);
         }
+
+        return true;
     }
 
     #define LAB label&
