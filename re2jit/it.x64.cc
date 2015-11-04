@@ -68,7 +68,7 @@ struct re2jit::native
                 }
         }
 
-        *stptr++ = prog->start();
+        emitted[*stptr++ = prog->start()]++;
 
         while (stptr != stack) {
             #define EMIT_NEXT(i) if (!emitted[i]++) *stptr++ = i
