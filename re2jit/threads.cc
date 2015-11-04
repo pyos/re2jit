@@ -186,6 +186,9 @@ int rejit_thread_match(struct rejit_threadset_t *r)
 
     struct rejit_thread_t *t = rejit_thread_fork(r);
 
+    if (t == NULL)
+        return 0;
+
     t->groups[1] = r->offset;
 
     while (t->next != rejit_list_end(&r->all_threads)) {
