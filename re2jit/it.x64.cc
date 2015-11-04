@@ -30,6 +30,7 @@ struct re2jit::native
         // (as there is only one way to reach them and we've already checked that).
         // Opcodes with indegree 0 are completely unreachable, no need to compile those.
         std::vector< unsigned > indegree(n);
+        std::vector< unsigned > emitted(n);
 
         ssize_t *stack = new ssize_t[prog->size()];
         ssize_t *stptr = stack;
@@ -67,10 +68,13 @@ struct re2jit::native
                 }
         }
 
-        delete[] stack;
+        *stptr++ = prog->start();
 
-        for (i = 0; i < n; i++) if (indegree[i]) {
-            code.mark(labels[i]);
+        while (stptr != stack) {
+            #define EMIT_NEXT(i) if (!emitted[i]++) *stptr++ = i
+            #define EMIT_JUMP(i) EMIT_NEXT(i); else code.jmp(labels[i])
+
+            code.mark(labels[i = *--stptr]);
             // Each opcode should conform to the System V ABI calling convention.
             //   argument 1: %rdi = struct rejit_threadset_t *nfa
             //   return reg: %rax = 1 iff found a match somewhere
@@ -111,7 +115,7 @@ struct re2jit::native
                                 .push (as::rdi)
                                 .call (&rejit_thread_wait)
                                 .pop  (as::rdi);
-
+                            EMIT_NEXT(op.out());
                             break;
                     }
 
@@ -128,9 +132,8 @@ struct re2jit::native
                         .pop   (as::rdi)
                         .test  (as::eax, as::eax).jmp(succeed, as::not_zero);
 
-                    if ((size_t) op->out1() != i + 1)
-                        code.jmp(labels[op->out1()]);
-
+                    EMIT_NEXT(op->out());
+                    EMIT_JUMP(op->out1());
                     break;
 
                 case re2::kInstByteRange: {
@@ -167,7 +170,7 @@ struct re2jit::native
                     code.mov(labels[seq.back()->out()], as::rsi)
                         .mov(seq.size(), as::edx)
                         .jmp(&rejit_thread_wait);
-
+                    EMIT_NEXT(seq.back()->out());
                     break;
                 }
 
@@ -189,7 +192,7 @@ struct re2jit::native
                     // nfa->running->groups[cap] = esi; return eax;
                         .mov  (as::esi, as::mem(as::rcx) + &THREAD->groups[op->cap()])
                         .ret  ();
-
+                    EMIT_NEXT(op->out());
                     break;
 
                 case re2::kInstEmptyWidth:
@@ -197,16 +200,11 @@ struct re2jit::native
                     code.mov  (as::mem(as::rdi) + &NFA->empty, as::eax)
                         .not_ (as::eax)
                         .test (op->empty(), as::eax).jmp(fail, as::not_zero);
-
-                    if ((size_t) op->out() != i + 1)
-                        code.jmp(labels[op->out()]);
-
+                    EMIT_JUMP(op->out());
                     break;
 
                 case re2::kInstNop:
-                    if ((size_t) op->out() != i + 1)
-                        code.jmp(labels[op->out()]);
-
+                    EMIT_JUMP(op->out());
                     break;
 
                 case re2::kInstMatch:
@@ -219,6 +217,8 @@ struct re2jit::native
                     break;
             }
         }
+
+        delete[] stack;
 
         as::i8 *target = (as::i8 *) mmap(NULL, code.size(), PROT_READ | PROT_WRITE,
                                          MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
