@@ -101,13 +101,15 @@ struct re2jit::native
                             // if ((utf8_length = utf8_chr >> 32) == 0) return;
                                 .mov  (as::rax, as::rdx)
                                 .shr  (32,      as::rdx).jmp(fail, as::zero)
-                            // if ((UNICODE_CODEPOINT_TYPE[utf8_chr] & UNICODE_GENERAL) != arg) return;
-                                .mov  (as::i64(UNICODE_CODEPOINT_TYPE), as::rsi)
-                                .mov  (as::eax, as::eax)  // zero upper 32 bits
-                                .add  (as::rsi, as::rax)
-                                .mov  (as::mem(as::rax), as::cl)
-                                .and_ (UNICODE_GENERAL,  as::cl)
-                                .cmp  (op.arg(),         as::cl).jmp(fail, as::not_equal)
+                            // if ((rejit_unicode_category(utf8_chr) & UNICODE_CATEGORY_GENERAL) != arg) return;
+                                .push (as::rdi)
+                                .push (as::rdx)
+                                .mov  (as::eax, as::edi)
+                                .call (&rejit_unicode_category)  // inlining is hard.
+                                .pop  (as::rdx)
+                                .pop  (as::rdi)
+                                .and_ (UNICODE_CATEGORY_GENERAL, as::al)
+                                .cmp  (op.arg(), as::al).jmp(fail, as::not_equal)
                             // rejit_thread_wait(nfa, &out, utf8_length);
                                 .mov  (labels[op.out()], as::rsi)
                                 .push (as::rdi)

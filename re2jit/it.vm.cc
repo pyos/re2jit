@@ -45,13 +45,13 @@ struct re2jit::native
                     case re2jit::inst::kUnicodeType: {
                         uint64_t x = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length);
 
-                        if (0 == x)
+                        if (!x)
                             // not a valid utf-8 character
                             break;
 
-                        rejit_uni_type_t cls = UNICODE_CODEPOINT_TYPE[x & 0xFFFFFFFF];
+                        rejit_uni_type_t cls = rejit_unicode_category((rejit_uni_char_t) x);
 
-                        if ((cls & UNICODE_GENERAL) != op.arg())
+                        if ((cls & UNICODE_CATEGORY_GENERAL) != op.arg())
                             break;
 
                         rejit_thread_wait(nfa, op.out(), x >> 32);
