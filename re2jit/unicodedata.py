@@ -1,5 +1,6 @@
 import os
 import textwrap
+import itertools
 import unicodedata
 
 
@@ -10,69 +11,66 @@ def writeinto(file, data, *args, **kwargs):
 
 SPACE_SIZE = 0x110000  # max. code point + 1
 BLOCK_SIZE = 8  # data = table_2[table_1[ch >> block_size] + ch % (1 << block_size)]
-assert SPACE_SIZE % (1 << BLOCK_SIZE) == 0
-
-TABLE_CATEGORY_N = {}  # category -> id
-TABLE_CATEGORY_1 = []  # character / block -> ref
-TABLE_CATEGORY_2 = []  # character % block + ref -> id
 
 
-def gen_category_table():
-    cats  = {}
-    blks  = {}
-    block = []
+def make_2stage_table(xs):
+    blocks = {}
+    table1 = []
+    table2 = []
 
-    for uid in range(SPACE_SIZE):
-        gen, _ = spc = unicodedata.category(chr(uid))
-        # Categories are two letters: general category and subcategory.
-        # Example: Lu = Letter, uppercase.
-        #          Nd = Number, decimal digit.
-        # Most significant 4 bits will identify the general category.
-        try:
-            gid = TABLE_CATEGORY_N[gen]
-        except KeyError:
-            gid = TABLE_CATEGORY_N[gen] = len(cats) << 4
+    for block in zip(*[iter(xs)] * (1 << BLOCK_SIZE)):
+        if block not in blocks:
+            blocks[block] = len(table2)
+            table2.extend(block)
+        table1.append(blocks[block])
 
-        try:
-            sid = TABLE_CATEGORY_N[spc]
-        except KeyError:
-            sid = TABLE_CATEGORY_N[spc] = gid | cats.setdefault(gen, 0)
-            cats[gen] += 1
-
-        assert (gid &  0x0F) == 0,   'category name collision'
-        assert (gid & ~0xFF) == 0,   'category limit exceeded'
-        assert (sid &  0xF0) == gid, 'category mismatch or overflow'
-        block.append(sid)
-
-        if len(block) == 1 << BLOCK_SIZE:
-            block = tuple(block)
-            if block not in blks:
-                blks[block] = len(TABLE_CATEGORY_2)
-                TABLE_CATEGORY_2.extend(block)
-            TABLE_CATEGORY_1.append(blks[block])
-            block = []
+    return table1, table2
 
 
-gen_category_table()
+def make_string_table(xs, bits_per_char):
+    return dict(make_string_table_rec(sorted(xs), bits_per_char, 0, 0))
+
+
+def make_string_table_rec(xs, bits_per_char, i, suffix):
+    # `xs` assumed to be sorted.
+    it = itertools.groupby((x for x in xs if len(x) > i), lambda x: x[:i + 1])
+
+    for digit, (key, group) in enumerate(it):
+        assert digit < (1 << bits_per_char), 'overflow'
+        # basically, the result is a table that maps each string to its encoding as a
+        # base-N number, and it is guaranteed that if `x` is in that table, then each
+        # prefix of `x` is also there; and if `x` is a prefix of `y`, then `enc(x)`
+        # is a suffix of `enc(y)`.
+        new_suffix = digit << (bits_per_char * i) | suffix
+        yield key, new_suffix
+        yield from make_string_table_rec(group, bits_per_char, i + 1, new_suffix)
+
+
+TABLE_CATEGORY_1, \
+TABLE_CATEGORY_2 = make_2stage_table(unicodedata.category(chr(c)) for c in range(SPACE_SIZE))
+TABLE_CATEGORY_N = make_string_table(set(TABLE_CATEGORY_2), bits_per_char=4)
+
 print("total  blocks: ", len(TABLE_CATEGORY_1))
 print("unique blocks: ", len(TABLE_CATEGORY_2) >> BLOCK_SIZE)
 
 
 writeinto(os.path.join(os.path.dirname(__file__), 'unicodedata.h'),
     '''
-        // make re2jit/unicodedata.h
-        #include <stdint.h>
-        typedef uint8_t  rejit_uni_type_t;
-        typedef uint16_t rejit_bmp_char_t;
-        typedef uint32_t rejit_uni_char_t;
+    // make re2jit/unicodedata.h
+    #include <stdint.h>
+    #define UNICODE_2STAGE_GET(t, c) t##_2[(c) % (1 << {1}) + t##_1[(c) >> {1}]]
 
-        static const rejit_uni_char_t UNICODE_SPACE_SIZE = {};
-        static const rejit_uni_char_t UNICODE_BLOCK_SIZE = {};
+    typedef uint8_t  rejit_uni_type_t;
+    typedef uint16_t rejit_bmp_char_t;
+    typedef uint32_t rejit_uni_char_t;
 
-        extern const rejit_uni_char_t UNICODE_CATEGORY_1[];
-        extern const rejit_uni_type_t UNICODE_CATEGORY_2[];
-        static const rejit_uni_type_t UNICODE_CATEGORY_GENERAL = 0xF0;
-        {}
+    static const rejit_uni_char_t UNICODE_SPACE_SIZE = {0};
+    static const rejit_uni_char_t UNICODE_BLOCK_SIZE = {1};
+
+    extern const rejit_uni_char_t UNICODE_CATEGORY_1[];
+    extern const rejit_uni_type_t UNICODE_CATEGORY_2[];
+    static const rejit_uni_type_t UNICODE_CATEGORY_GENERAL = 0x0F;
+    {2}
     ''',
     SPACE_SIZE,
     BLOCK_SIZE,
@@ -88,6 +86,6 @@ writeinto(os.path.join(os.path.dirname(__file__), 'unicodedata.cc'),
     extern const rejit_uni_char_t UNICODE_CATEGORY_1[] = {{ {} }};
     extern const rejit_uni_type_t UNICODE_CATEGORY_2[] = {{ {} }};
     ''',
-    ','.join(str(x) for x in TABLE_CATEGORY_1),
-    ','.join(str(x) for x in TABLE_CATEGORY_2),
+    ','.join(str(x)                   for x in TABLE_CATEGORY_1),
+    ','.join(str(TABLE_CATEGORY_N[x]) for x in TABLE_CATEGORY_2),
 )

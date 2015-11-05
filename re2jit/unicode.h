@@ -5,12 +5,11 @@ extern "C" {
     #include <stdint.h>
     #include "unicodedata.h"
 
-    /* Return a character's specific category. `&` with UNICODE_TYPE_GENERAL
+    /* Return a character's specific category. `&` with UNICODE_CATEGORY_GENERAL
      * to get the general category. */
     static inline rejit_uni_type_t rejit_unicode_category(rejit_uni_char_t c)
     {
-        rejit_uni_char_t a = UNICODE_CATEGORY_1[c >> UNICODE_BLOCK_SIZE];
-        return UNICODE_CATEGORY_2[a + c % (1 << UNICODE_BLOCK_SIZE)];
+        return UNICODE_2STAGE_GET(UNICODE_CATEGORY, c);
     }
 
     /* Attempt to read a single UTF-8 character from a buffer. On success,
