@@ -82,9 +82,9 @@ struct re2jit::native
             // kInstFail will do `ret` anyway.
             if (op->opcode() != re2::kInstFail && indegree[i] > 1)
                 // if (bit(nfa->visited, i) == 1) return; bit(nfa->visited, i) = 1;
-                code.mov  (as::mem(as::rdi) + &NFA->visited, as::rsi)
-                    .test (as::i8(1 << (i % 8)), as::mem(as::rsi) + i / 8).jmp(fail, as::not_zero)
-                    .or_  (as::i8(1 << (i % 8)), as::mem(as::rsi) + i / 8);
+                code.mov  (as::mem(as::rdi + &NFA->visited), as::rsi)
+                    .test (as::i8(1 << (i % 8)), as::mem(as::rsi + i / 8)).jmp(fail, as::not_zero)
+                    .or_  (as::i8(1 << (i % 8)), as::mem(as::rsi + i / 8));
 
             if (vec.size()) {
                 for (auto &op : vec) {
@@ -94,8 +94,8 @@ struct re2jit::native
                         case re2jit::inst::kUnicodeType:
                             // utf8_chr = rejit_read_utf8(nfa->input, nfa->length);
                             code.push (as::rdi)
-                                .mov  (as::mem(as::rdi) + &NFA->length, as::rsi)
-                                .mov  (as::mem(as::rdi) + &NFA->input,  as::rdi)
+                                .mov  (as::mem(as::rdi + &NFA->length), as::rsi)
+                                .mov  (as::mem(as::rdi + &NFA->input),  as::rdi)
                                 .call (&rejit_read_utf8)
                                 .pop  (as::rdi)
                             // if ((utf8_length = utf8_chr >> 32) == 0) return;
@@ -104,7 +104,7 @@ struct re2jit::native
                             // if ((UNICODE_CODEPOINT_TYPE[utf8_chr] & UNICODE_GENERAL) != arg) return;
                                 .mov  (as::i64(UNICODE_CODEPOINT_TYPE), as::rsi)
                                 .mov  (as::eax, as::eax)  // zero upper 32 bits
-                                .add  (as::rsi, as::rax)  // TODO mov (%rsi, %rax, 1), %cl
+                                .add  (as::rsi, as::rax)
                                 .mov  (as::mem(as::rax), as::cl)
                                 .and_ (UNICODE_GENERAL,  as::cl)
                                 .cmp  (op.arg(),         as::cl).jmp(fail, as::not_equal)
@@ -141,8 +141,8 @@ struct re2jit::native
                         seq.push_back(op);
 
                     // if (nfa->length < len) return; else rsi = nfa->input;
-                    code.cmp(as::i32(seq.size()), as::mem(as::rdi) + &NFA->length).jmp(fail, as::less_u)
-                        .mov(as::mem(as::rdi) + &NFA->input, as::rsi);
+                    code.cmp(as::i32(seq.size()), as::mem(as::rdi + &NFA->length)).jmp(fail, as::less_u)
+                        .mov(as::mem(as::rdi + &NFA->input), as::rsi);
 
                     for (auto op : seq) {
                         code.mov(as::mem(as::rsi), as::al)
@@ -150,8 +150,8 @@ struct re2jit::native
 
                         if (op->foldcase())
                             // if ('A' <= al && al <= 'Z') al = al - 'A' + 'a';
-                            code.lea(as::mem(as::rax) - 'A', as::ecx)
-                                .lea(as::mem(as::rcx) + 'a', as::edx)
+                            code.mov(as::rax - 'A', as::ecx)
+                                .mov(as::rcx + 'a', as::edx)
                                 .cmp('Z' - 'A', as::cl)
                                 .mov(as::edx, as::eax, as::less_equal_u);
 
@@ -174,13 +174,13 @@ struct re2jit::native
 
                 case re2::kInstCapture:
                     // if (nfa->groups <= cap) goto out;
-                    code.cmp  (as::i32(op->cap()), as::mem(as::rdi) + &NFA->groups)
+                    code.cmp  (as::i32(op->cap()), as::mem(as::rdi + &NFA->groups))
                         .jmp  (labels[op->out()], as::less_equal_u)
                     // esi = nfa->running->groups[cap]; nfa->running->groups[cap] = nfa->offset;
-                        .mov  (as::mem(as::rdi) + &NFA->running, as::rcx)
-                        .mov  (as::mem(as::rdi) + &NFA->offset,  as::eax)
-                        .mov  (as::mem(as::rcx) + &THREAD->groups[op->cap()], as::esi)
-                        .mov  (as::eax, as::mem(as::rcx) + &THREAD->groups[op->cap()])
+                        .mov  (as::mem(as::rdi + &NFA->running), as::rcx)
+                        .mov  (as::mem(as::rdi + &NFA->offset),  as::eax)
+                        .mov  (as::mem(as::rcx + &THREAD->groups[op->cap()]), as::esi)
+                        .mov  (as::eax, as::mem(as::rcx + &THREAD->groups[op->cap()]))
                     // eax = out(nfa);
                         .push (as::rsi)
                         .push (as::rcx)
@@ -188,14 +188,14 @@ struct re2jit::native
                         .pop  (as::rcx)
                         .pop  (as::rsi)
                     // nfa->running->groups[cap] = esi; return eax;
-                        .mov  (as::esi, as::mem(as::rcx) + &THREAD->groups[op->cap()])
+                        .mov  (as::esi, as::mem(as::rcx + &THREAD->groups[op->cap()]))
                         .ret  ();
                     EMIT_NEXT(op->out());
                     break;
 
                 case re2::kInstEmptyWidth:
                     // if (~nfa->empty & empty) return;
-                    code.mov  (as::mem(as::rdi) + &NFA->empty, as::eax)
+                    code.mov  (as::mem(as::rdi + &NFA->empty), as::eax)
                         .not_ (as::eax)
                         .test (op->empty(), as::eax).jmp(fail, as::not_zero);
                     EMIT_JUMP(op->out());

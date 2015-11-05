@@ -1,3 +1,9 @@
+#include <deque>
+#include <vector>
+#include <string.h>
+#include <stddef.h>
+#include <stdint.h>
+
 // A simple x86-64 assembler and linker.
 //   http://wiki.osdev.org/X86-64_Instruction_Encoding
 //   http://ref.x86asm.net/coder64-abc.html
@@ -10,7 +16,7 @@ struct as
 
     enum rb  : i8 {  al,  cl,  dl,  bl, };
     enum r32 : i8 { eax, ecx, edx, ebx, esp, ebp, esi, edi, };
-    enum r64 : i8 { rax, rcx, rdx, rbx, rsp, rbp, rsi, rdi, r8, r9, r10, r11, r12, r13, r14, r15, rip = 0x80 | rbp };
+    enum r64 : i8 { rax, rcx, rdx, rbx, rsp, rbp, rsi, rdi, r8, r9, r10, r11, r12, r13, r14, r15, r0 = 0x80, rip = r0 | rbp };
 
     enum cond : i8  // pass as second argument to jmp to create a conditional jump.
     {
@@ -28,17 +34,30 @@ struct as
         more         = 0xf,
     };
 
-    struct mem  // mem{rcx} + 5 -- 5(%rcx) in at&t syntax
+    struct ptr
     {
-        s32 disp;  // `disp(base, index, scale)` not supported.
-        r64 base;
-        explicit mem(r64 _base, s32 _disp = 0) : disp(_disp), base(_base) {}
+        struct base {
+            r64 reg;
+            s32 add;
+            base(r64 _r = r0, s32 _a = 0) : reg(_r), add(_a) {}
+        } a;
 
-        template <typename T>
-        mem operator + (T  *ptr) { return mem { base, disp + (s32) (i64) ptr }; }
-        mem operator + (s32 off) { return mem { base, disp + off }; }
-        mem operator - (s32 off) { return mem { base, disp - off }; }
+        struct index
+        {
+            r64 reg;
+            i8  mul;
+            index(r64 _r = r0, i8 _m = 1) : reg(_r), mul(_m) {}
+        } b;
+
+        ptr(r64   _a, index _b = r0) : a{_a},    b{_b} {}
+        ptr(base  _a, index _b = r0) : a{_a},    b{_b} {}
+        ptr(          index _b = r0) : a{r0, 0}, b{_b} {}
     };
+
+    // `ptr` encodes `disp(base, index, scale)`. `mem` encodes the actual value at a `ptr`.
+    // Thus `ptr` can only be an argument to `lea`, but `mem` may be passed to any m8/32/64
+    // instruction. That's the whole difference.
+    struct mem : ptr { explicit mem(ptr x) : ptr(x) {} };
 
     struct target { size_t offset = -1;
                     std::vector<size_t> abs64;
@@ -109,8 +128,6 @@ struct as
     as& jmp   (i32 a,  i8 b) { return   imm8(0x0f).imm8(0x80 | b).        imm32(a) ; }
     as& jmp   (LAB a,  i8 b) { return   imm8(0x0f).imm8(0x80 | b).        rel32(a) ; }
     as& jmp   (       r64 b) { return rex(0, 0, b).imm8(0xff).modrm(4, b)          ; }
-    as& lea   (mem a, r32 b) { return rex(0, a, b).imm8(0x8d).modrm(a, b)          ; }
-    as& lea   (mem a, r64 b) { return rex(1, a, b).imm8(0x8d).modrm(a, b)          ; }
     as& mov   (i32 a, r32 b) { return              imm8(0xb8 | b).        imm32(a) ; }
     as& mov   (i32 a, r64 b) { return rex(1, 0, b).imm8(0xc7).modrm(0, b).imm32(a) ; }
     as& mov   (i64 a, r64 b) { return rex(1, 0, b).imm8(0xb8 | b).        imm64(a) ; }
@@ -119,6 +136,9 @@ struct as
     as& mov   (r64 a, r64 b) { return rex(1, a, b).imm8(0x89).modrm(a, b)          ; }
     as& mov   (r32 a, mem b) { return rex(0, 0, b).imm8(0x89).modrm(a, b)          ; }
     as& mov   (r64 a, mem b) { return rex(1, a, b).imm8(0x89).modrm(a, b)          ; }
+    // NOTE: MOV ptr, reg is actually LEA mem, reg
+    as& mov   (ptr a, r32 b) { return rex(0, a, b).imm8(0x8d).modrm(a, b)          ; }
+    as& mov   (ptr a, r64 b) { return rex(1, a, b).imm8(0x8d).modrm(a, b)          ; }
     as& mov   (mem a,  rb b) { return rex(0, a, b).imm8(0x8a).modrm(a, b)          ; }
     as& mov   (mem a, r32 b) { return rex(0, a, b).imm8(0x8b).modrm(a, b)          ; }
     as& mov   (mem a, r64 b) { return rex(1, a, b).imm8(0x8b).modrm(a, b)          ; }
@@ -147,8 +167,8 @@ struct as
     as& xor_  (r32 a, r32 b) { return              imm8(0x31).modrm(a, b)          ; }
 
     // shorthands for indirect jumps to 64-bit (ok, 48-bit) pointers.
-    template <typename T> as& jmp   (T *p) { return mov((i64) p, rax).jmp  (rax); }
-    template <typename T> as& call  (T *p) { return mov((i64) p, rax).call (rax); }
+    template <typename T> as& jmp   (T *p) { return mov((i64) p, r10).jmp  (r10); }
+    template <typename T> as& call  (T *p) { return mov((i64) p, r10).call (r10); }
     #undef LAB
 
     protected:
@@ -167,22 +187,25 @@ struct as
             return i.tg = &_targets.back();
         }
 
-        as& rex(i8 w, i8 r, mem b) { return rex(w, r, b.base); }
-        as& rex(i8 w, mem b, i8 r) { return rex(w, r, b.base); }
-        as& rex(i8 w, i8 r /*, i8 x -- index register, not supported */, i8 b)
+        as& rex(i8 w, i8 r, mem b) { return rex(w, r, b.a.reg, b.b.reg); }
+        as& rex(i8 w, ptr b, i8 r) { return rex(w, r, b.a.reg, b.b.reg); }
+        as& rex(i8 w, mem b, i8 r) { return rex(w, r, b.a.reg, b.b.reg); }
+        as& rex(i8 w, i8 r, i8 b, i8 x = 0)
         {
             //     /--- fixed value
             //     |      /--- opcode is 64-bit
             //     |      |         /--- additional significant bit for modr/m reg2 field
-            //     |      |         |               /--- same for reg1 (see below)
-            i8 f = 0x40 | w << 3 | (r & 8) >> 1 | (b & 8) >> 3;
+            //     |      |         |              /-- same for index register
+            //     |      |         |              |              /--- same for reg1 (see below)
+            i8 f = 0x40 | w << 3 | (r & 8) >> 1 | (x & 8) >> 2 | (b & 8) >> 3;
             //          /--- REX with all zero flags is ignored
             return f == 0x40 ? *this : imm8(f);
         }
 
         as& modrm( i8 a,  i8 b) { return imm8((a & 7) << 3 | (b & 7) | 0xc0); }
-        as& modrm( i8 a, mem b) { return imm8((a & 7) << 3 | (b.base & 7)).modrm(b); }
-        as& modrm(mem a,  i8 b) { return imm8((b & 7) << 3 | (a.base & 7)).modrm(a); }
+        as& modrm( i8 a, mem b) { return imm8((a & 7) << 3 | (b.a.reg & 7)).modrm(b); }
+        as& modrm(mem a,  i8 b) { return modrm(b, a); }
+        as& modrm(ptr a,  i8 b) { return modrm(b, as::mem(a)); }
         as& modrm(mem m) {
             i8& ref = _code[_code.size() - 1];
             // ref is the ModR/M byte:
@@ -190,25 +213,74 @@ struct as
             //    | | |   | \---/----- register 1
             //    | | \---/----- opcode extension (only for single-register opcodes) or register 2
             //    \-/----- mode (0, 1, or 2; 3 means "raw value from register" and is encoded above)
-            if (m.base == rsp)
-                // rsp's encoding (100) in reg1 means "use SIB byte", so that's how we'll encode it:
-                //   SIB = 00 100 100 = (%rsp, %rsp, 1)
-                imm8(0x24);
-
-            if (m.base == rip)
+            if (m.a.reg == rip)
                 // mode = 0 with reg1 = rbp/rip/r13 (0b101) means `disp32(%rip)`
-                return imm32((i32) m.disp);
+                // it's not possible to use rip-relative addressing in any other way.
+                return imm32((i32) m.a.add);
 
-            if (m.disp == 0 && m.base != rbp && m.base != r13)
-                // mode = 0 otherwise means `(reg1)`, i.e. no displacement
+            if (m.a.reg == r0 || m.b.reg != r0 || m.a.reg == rsp) {
+                // rsp's encoding (100) in reg1 means "use SIB byte".
+                ref = (ref & ~7) | rsp;
+                // SIB byte:
+                //    0 1 2 3 4 5 6 7
+                //    | | |   | \---/--- base register
+                //    | | \---/--- index register; %rsp if none
+                //    \-/--- index scale: result = base + index * (2 ** scale) + disp
+                i8 sib = rsp << 3;
+
+                if (m.b.reg != r0) switch (m.b.mul) {
+                    case 1: sib = (m.b.reg & 7) << 3;        break;
+                    case 2: sib = (m.b.reg & 7) << 3 | 0x40; break;
+                    case 4: sib = (m.b.reg & 7) << 3 | 0x80; break;
+                    case 8: sib = (m.b.reg & 7) << 3 | 0xc0; break;
+                }
+
+                if (m.a.reg == r0)
+                    // %rbp as base in mode 0 means no base at all, only 32-bit absolute address
+                    return imm8(sib | rbp).imm32((i32) m.a.add);
+
+                imm8(sib | (m.a.reg & 7));
+            }
+
+            if (m.a.add == 0 && m.a.reg != rbp && m.a.reg != r13)
+                // mode = 0 means `(reg1)`, i.e. no displacement unless base is rbp/r13.
                 return *this;
 
-            if (-128 <= m.disp && m.disp < 128) {
+            if (-128 <= m.a.add && m.a.add < 128) {
                 ref |= 0x40;  // mode = 1 -- 8-bit displacement.
-                return imm8((i8) m.disp);
+                return imm8((i8) m.a.add);
             }
 
             ref |= 0x80;  // mode = 2 -- 32-bit displacement
-            return imm32((i32) m.disp);
+            return imm32((i32) m.a.add);
         }
 };
+
+// pointer arithmetic magic
+template <typename T> as::ptr::base  operator + (T       a, as::r64 b) { return as::ptr::base  {b,  as::s32(a)}; }
+template <typename T> as::ptr::base  operator + (as::r64 a, T       b) { return as::ptr::base  {a,  as::s32(b)}; }
+template <typename T> as::ptr::base  operator - (as::r64 a, T       b) { return as::ptr::base  {a, -as::s32(b)}; }
+template <typename T> as::ptr::base  operator + (as::r64 a, T      *b) { return as::ptr::base  {a,  as::s32(as::i64(b))}; }
+template <typename T> as::ptr::index operator * (T       a, as::r64 b) { return as::ptr::index {b,  as::i8(a)}; }
+template <typename T> as::ptr::index operator * (as::r64 a, T       b) { return as::ptr::index {a,  as::i8(b)}; }
+
+as::ptr        operator + (as::r64        a, as::r64        b) { return as::ptr {a,  b}; }
+as::ptr        operator + (as::ptr::index a, as::r64        b) { return as::ptr {b,  a}; }
+as::ptr        operator + (as::r64        a, as::ptr::index b) { return as::ptr {a,  b}; }
+as::ptr        operator + (as::r64        a, as::ptr::base  b) { return as::ptr {b,  a}; }
+as::ptr        operator + (as::ptr::base  a, as::r64        b) { return as::ptr {a,  b}; }
+as::ptr        operator + (as::ptr::index a, as::ptr::base  b) { return as::ptr {b,  a}; }
+as::ptr        operator + (as::ptr::base  a, as::ptr::index b) { return as::ptr {a,  b}; }
+
+as::ptr::base  operator + (as::s32        a, as::ptr::base  b) { return b.reg + (b.add + a); }
+as::ptr::base  operator + (as::ptr::base  a, as::s32        b) { return a.reg + (a.add + b); }
+as::ptr::base  operator - (as::ptr::base  a, as::s32        b) { return a.reg + (a.add - b); }
+as::ptr::index operator * (as::i8         a, as::ptr::index b) { return b.reg * as::i8(b.mul * a); }
+as::ptr::index operator * (as::ptr::index a, as::i8         b) { return a.reg * as::i8(a.mul * b); }
+as::ptr        operator + (as::s32        a, as::ptr        b) { return (b.a + a) + b.b; }
+as::ptr        operator + (as::ptr        a, as::s32        b) { return (a.a + b) + a.b; }
+as::ptr        operator - (as::ptr        a, as::s32        b) { return (a.a - b) + a.b; }
+as::ptr        operator + (as::ptr::base  a, as::ptr::base  b) { return (a.reg + b.reg) + (a.add + b.add); }
+as::ptr        operator * (as::i8         a, as::ptr::base  b) { return b.reg * a + b.add * a; }
+as::ptr        operator * (as::ptr::base  a, as::i8         b) { return a.reg * b + a.add * b; }
+// pointer arithmetic magic--
