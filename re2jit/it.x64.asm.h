@@ -107,17 +107,17 @@ struct as
 
     //         src    dst             REX prefix   opcode     ModR/M      immediate
     //                /cond           [64-bit mode]           [+ disp]
-    as& add   ( i8 a,  rb b) { return              imm8(0x80).modrm(0, b).imm8 (a) ; }
-    as& add   (r32 a, r32 b) { return              imm8(0x01).modrm(a, b)          ; }
+    as& add   ( i8 a,  rb b) { return rex(0, 0, b).imm8(0x80).modrm(0, b).imm8 (a) ; }
+    as& add   (r32 a, r32 b) { return rex(0, a, b).imm8(0x01).modrm(a, b)          ; }
     as& add   ( i8 a, r64 b) { return rex(1, 0, b).imm8(0x83).modrm(0, b).imm8 (a) ; }
     as& add   (i32 a, r64 b) { return rex(1, 0, b).imm8(0x81).modrm(0, b).imm32(a) ; }
     as& add   (r64 a, r64 b) { return rex(1, a, b).imm8(0x01).modrm(a, b)          ; }
-    as& and_  ( i8 a,  rb b) { return              imm8(0x80).modrm(4, b).imm8 (a) ; }
+    as& and_  ( i8 a,  rb b) { return rex(0, 0, b).imm8(0x80).modrm(4, b).imm8 (a) ; }
     as& call  (i32 a       ) { return              imm8(0xe8).            imm32(a) ; }
     as& call  (LAB a       ) { return              imm8(0xe8).            rel32(a) ; }
     as& call  (       r64 b) { return rex(0, 0, b).imm8(0xff).modrm(2, b)          ; }
-    as& cmp   ( i8 a,  rb b) { return              imm8(0x80).modrm(7, b).imm8 (a) ; }
-    as& cmp   ( i8 a, r32 b) { return              imm8(0x83).modrm(7, b).imm8 (a) ; }
+    as& cmp   ( i8 a,  rb b) { return rex(0, 0, b).imm8(0x80).modrm(7, b).imm8 (a) ; }
+    as& cmp   ( i8 a, r32 b) { return rex(0, 0, b).imm8(0x83).modrm(7, b).imm8 (a) ; }
     as& cmp   ( i8 a, mem b) { return rex(0, 0, b).imm8(0x83).modrm(7, b).imm8 (a) ; }
     as& cmp   (i32 a, mem b) { return rex(0, 0, b).imm8(0x81).modrm(7, b).imm32(a) ; }
     as& cmp   (r64 a, mem b) { return rex(1, a, b).imm8(0x39).modrm(a, b)          ; }
@@ -128,13 +128,13 @@ struct as
     as& jmp   (i32 a,  i8 b) { return   imm8(0x0f).imm8(0x80 | b).        imm32(a) ; }
     as& jmp   (LAB a,  i8 b) { return   imm8(0x0f).imm8(0x80 | b).        rel32(a) ; }
     as& jmp   (       r64 b) { return rex(0, 0, b).imm8(0xff).modrm(4, b)          ; }
-    as& mov   (i32 a, r32 b) { return              imm8(0xb8 | b).        imm32(a) ; }
+    as& mov   (i32 a, r32 b) { return rex(0, 0, b).imm8(0xb8 | b).        imm32(a) ; }
     as& mov   (i32 a, r64 b) { return rex(1, 0, b).imm8(0xc7).modrm(0, b).imm32(a) ; }
     as& mov   (i64 a, r64 b) { return rex(1, 0, b).imm8(0xb8 | b).        imm64(a) ; }
     as& mov   (LAB a, r64 b) { return rex(1, 0, b).imm8(0xb8 | b).        abs64(a) ; }
-    as& mov   (r32 a, r32 b) { return              imm8(0x89).modrm(a, b)          ; }
+    as& mov   (r32 a, r32 b) { return rex(0, a, b).imm8(0x89).modrm(a, b)          ; }
     as& mov   (r64 a, r64 b) { return rex(1, a, b).imm8(0x89).modrm(a, b)          ; }
-    as& mov   (r32 a, mem b) { return rex(0, 0, b).imm8(0x89).modrm(a, b)          ; }
+    as& mov   (r32 a, mem b) { return rex(0, a, b).imm8(0x89).modrm(a, b)          ; }
     as& mov   (r64 a, mem b) { return rex(1, a, b).imm8(0x89).modrm(a, b)          ; }
     // NOTE: MOV ptr, reg is actually LEA mem, reg
     as& mov   (ptr a, r32 b) { return rex(0, a, b).imm8(0x8d).modrm(a, b)          ; }
@@ -148,23 +148,23 @@ struct as
     // This is because mov is either r -> r/m or m -> r while cmovcc is r/m -> r.
     as& mov   (r32 a, r32 b,
                        i8 c) { return   imm8(0x0f).imm8(0x40 | c).modrm(b, a)      ; }
-    as& not_  (       r32 b) { return              imm8(0xf7).modrm(2, b)          ; }
+    as& not_  (       r32 b) { return rex(0, 0, b).imm8(0xf7).modrm(2, b)          ; }
     as& or_   ( i8 a, mem b) { return rex(0, 0, b).imm8(0x80).modrm(1, b).imm8 (a) ; }
     as& pop   (       r64 b) { return rex(0, 0, b).imm8(0x58 | (b & 7))            ; }
     as& push  (       r64 b) { return rex(0, 0, b).imm8(0x50 | (b & 7))            ; }
     as& repz  (            ) { return              imm8(0xf3)                      ; }
     as& ret   (            ) { return              imm8(0xc3)                      ; }
     as& shr   ( i8 a, r64 b) { return rex(1, 0, b).imm8(0xc1).modrm(5, b).imm8 (a) ; }
-    as& sub   ( i8 a,  rb b) { return              imm8(0x80).modrm(5, b).imm8 (a) ; }
-    as& sub   (r32 a, r32 b) { return              imm8(0x29).modrm(a, b)          ; }
+    as& sub   ( i8 a,  rb b) { return rex(0, 0, b).imm8(0x80).modrm(5, b).imm8 (a) ; }
+    as& sub   (r32 a, r32 b) { return rex(0, a, b).imm8(0x29).modrm(a, b)          ; }
     as& sub   (r64 a, r64 b) { return rex(1, a, b).imm8(0x29).modrm(a, b)          ; }
     as& sub   (mem a, r64 b) { return rex(1, a, b).imm8(0x2b).modrm(a, b)          ; }
     as& sub   (r64 a, mem b) { return rex(1, a, b).imm8(0x29).modrm(a, b)          ; }
-    as& test  (i32 a, r32 b) { return              imm8(0xf7).modrm(0, b).imm32(a) ; }
-    as& test  (r32 a, r32 b) { return              imm8(0x85).modrm(a, b)          ; }
+    as& test  (i32 a, r32 b) { return rex(0, 0, b).imm8(0xf7).modrm(0, b).imm32(a) ; }
+    as& test  (r32 a, r32 b) { return rex(0, a, b).imm8(0x85).modrm(a, b)          ; }
     as& test  ( i8 a, mem b) { return rex(0, 0, b).imm8(0xf6).modrm(0, b).imm8 (a) ; }
     as& test  (i32 a, mem b) { return rex(0, 0, b).imm8(0xf7).modrm(0, b).imm32(a) ; }
-    as& xor_  (r32 a, r32 b) { return              imm8(0x31).modrm(a, b)          ; }
+    as& xor_  (r32 a, r32 b) { return rex(0, a, b).imm8(0x31).modrm(a, b)          ; }
 
     // shorthands for indirect jumps to 64-bit (ok, 48-bit) pointers.
     template <typename T> as& jmp   (T *p) { return mov((i64) p, r10).jmp  (r10); }
