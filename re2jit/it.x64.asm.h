@@ -96,6 +96,11 @@ struct as
         return true;
     }
 
+    void *dereference(void *base, label lb)
+    {
+        return (uint8_t *) base + lb->offset;
+    }
+
     #define LAB label&
     as& imm8  (i8  i) { append(&i, 1); return *this; }
     as& imm32 (i32 i) { append(&i, 4); return *this; }

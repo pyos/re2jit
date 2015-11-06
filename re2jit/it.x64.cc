@@ -9,10 +9,11 @@ static const struct rejit_thread_t    *THREAD = NULL;
 
 struct re2jit::native
 {
-    void * _code;
+    void * entry;
+    void * state;
     size_t _size;
 
-    native(re2::Prog *prog) : _code(NULL), _size(0)
+    native(re2::Prog *prog) : entry(NULL), state(NULL), _size(0)
     {
         size_t i;
         size_t n = prog->size();
@@ -20,8 +21,13 @@ struct re2jit::native
         as code;
         std::vector<as::label> labels(n);
 
-        as::label fail;  // return 0, meaning did not enter an accepting state
-        as::label succeed;  // return 1, meaning there was a match somewhere
+        // NFA library will call this code with itself (%rdi) and a state (%rsi).
+        // In our case, the state is a pointer to actual code to execute.
+        code.jmp(as::rsi);
+
+        as::label fail;     // jump here to return 0
+        as::label succeed;  // jump here to return 1 (if a matching state is reachable)
+        code.mark(fail).xor_(as::eax, as::eax).mark(succeed).ret();
 
         // How many transitions have the i-th opcode as a target.
         // Opcodes with indegree 1 don't need to be tracked in the bit vector
@@ -88,6 +94,8 @@ struct re2jit::native
 
             if (vec.size()) {
                 for (auto &op : vec) {
+                    // Instead of returning, a failed pseudo-inst should jump
+                    // to the next inst in the alternation.
                     as::label fail;
 
                     switch (op.opcode()) {
@@ -246,8 +254,6 @@ struct re2jit::native
             }
         }
 
-        code.mark(fail).xor_(as::eax, as::eax).mark(succeed).ret();
-
         delete[] stack;
 
         void *target = mmap(NULL, code.size(), PROT_READ | PROT_WRITE,
@@ -261,22 +267,13 @@ struct re2jit::native
             return;
         }
 
-        _code = target;
+        entry = target;
+        state = code.dereference(target, labels[prog->start()]);
         _size = code.size();
     }
 
    ~native()
     {
-        munmap(_code, _size);
-    }
-
-    rejit_entry_t entry() const
-    {
-        return (rejit_entry_t) _code;
-    }
-
-    void run(struct rejit_threadset_t *nfa) const
-    {
-        rejit_thread_dispatch(nfa);
+        munmap(entry, _size);
     }
 };

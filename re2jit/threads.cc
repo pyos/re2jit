@@ -50,7 +50,7 @@ static struct rejit_thread_t *rejit_thread_entry(struct rejit_threadset_t *r)
         return NULL;
 
     memset(t->groups, 255, sizeof(int) * r->groups);
-    t->entry = r->entry;
+    t->state = r->initial;
     t->groups[0] = r->offset;
     rejit_list_append(r->all_threads.last, t);
     rejit_list_append(r->queues[r->active_queue].last, &t->category);
@@ -111,14 +111,6 @@ void rejit_thread_free(struct rejit_threadset_t *r)
 
 int rejit_thread_dispatch(struct rejit_threadset_t *r)
 {
-    #if RE2JIT_VM
-        if (r->running) {
-            r->running->next = r->free;
-            r->free = r->running;
-            r->running = NULL;
-        }
-    #endif
-
     unsigned char queue = r->active_queue;
 
     while (1) {
@@ -136,16 +128,10 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r)
 
             r->running = q;
             r->forked  = q->prev;
-
             rejit_list_remove(q);
             rejit_list_remove(&q->category);
 
-            #if RE2JIT_VM
-                return 1;
-            #else
-                q->entry(r);
-            #endif
-
+            r->entry(r, q->state);
             q->next = r->free;
             r->free = q;
         }
@@ -205,7 +191,7 @@ int rejit_thread_match(struct rejit_threadset_t *r)
 }
 
 
-int rejit_thread_wait(struct rejit_threadset_t *r, rejit_entry_t entry, size_t shift)
+int rejit_thread_wait(struct rejit_threadset_t *r, void *state, size_t shift)
 {
     struct rejit_thread_t *t = rejit_thread_fork(r);
 
@@ -213,7 +199,7 @@ int rejit_thread_wait(struct rejit_threadset_t *r, rejit_entry_t entry, size_t s
         // :33 < oh shit
         return 0;
 
-    t->entry = entry;
+    t->state = state;
     t->wait = shift - 1;
     rejit_list_append(r->queues[!r->active_queue].last, &t->category);
     return 0;
