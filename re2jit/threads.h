@@ -124,6 +124,13 @@ extern "C" {
          * is advanced one byte and the queue buffer is rotated one position.
          * Use RE2JIT_DEREF_THREAD on objects from these lists to get valid pointers. */
         RE2JIT_LIST_ROOT(struct rejit_thread_t) queues[2];
+        /* Current "version" of the bit vector. It is only necessary to clear it
+         * when switching threads only if the version has changed since the last time.
+         * Different "versions" correspond to different contents of `thread->groups`;
+         * this is used  to optimize backreferences (which force the engine to repeat
+         * same states multiple times). */
+        unsigned int bitmap_version;
+        unsigned int bitmap_version_last;
     };
 
 
@@ -163,7 +170,7 @@ extern "C" {
     void rejit_thread_bitmap_restore(struct rejit_threadset_t *);
 
     /* Fill the current `nfa->visited` with zeroes. */
-    void rejit_thread_bitmap_clear(struct rejit_threadset_t *);
+    void rejit_thread_bitmap_clear(struct rejit_threadset_t *, unsigned int);
 
 #ifdef __cplusplus
 };

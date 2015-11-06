@@ -86,8 +86,14 @@ struct re2jit::native
         // Each thread has its own group indices...
         if (backreferences.size())
             // ...so it must have its own zero-filled bit vector of visited states.
+            // Unless it has the same "version" as the previous thread. (Threads
+            // with same "version" have same group boundaries. However, not all threads
+            // with same boundaries have the same version. Nothing we can do about that.)
             code.push(as::rdi)
                 .push(as::rsi)
+            // rejit_thread_bitmap_clear(nfa, nfa->running->groups[1]);
+                .mov (as::mem(as::rdi + &NFA->running),      as::rcx)
+                .mov (as::mem(as::rcx + &THREAD->groups[1]), as::esi)
                 .call(&rejit_thread_bitmap_clear)
                 .pop (as::rsi)
                 .pop (as::rdi)
@@ -260,21 +266,26 @@ struct re2jit::native
                         .push (as::rsi)
                         .push (as::rcx);
 
-                    if (backreferences.find(op->cap() / 2) != backreferences.end())
+                    if (backreferences.find(op->cap() / 2) != backreferences.end()) {
+                        // nfa->running->groups[1] = ++nfa->bitmap_version_last;
+                        code.add  (as::i8(1), as::mem(as::rdi + &NFA->bitmap_version_last))
+                            .mov  (as::mem(as::rdi + &NFA->bitmap_version_last), as::eax)
+                            .mov  (as::eax, as::mem(as::rcx + &THREAD->groups[1]))
                         // rejit_thread_bitmap_save(nfa); eax = out(nfa);
                         // rejit_thread_bitmap_restore(nfa);
-                        code.push (as::rdi).call(&rejit_thread_bitmap_save)    .pop(as::rdi)
+                            .push (as::rdi).call(&rejit_thread_bitmap_save)    .pop(as::rdi)
                             .push (as::rdi).call(labels[op->out()])            .pop(as::rdi)
                             .push (as::rax).call(&rejit_thread_bitmap_restore) .pop(as::rax);
+                    }
                     else
-                        // eax = out(nfa)
+                        // eax = out(nfa);
                         code.call(labels[op->out()]);
 
-                    code.pop  (as::rcx)
-                        .pop  (as::rsi)
+                    code.pop(as::rcx)
+                        .pop(as::rsi)
                     // nfa->running->groups[cap] = esi; return eax;
-                        .mov  (as::esi, as::mem(as::rcx + &THREAD->groups[op->cap()]))
-                        .ret  ();
+                        .mov(as::esi, as::mem(as::rcx + &THREAD->groups[op->cap()]))
+                        .ret();
                     EMIT_NEXT(op->out());
                     break;
 

@@ -113,10 +113,11 @@ struct as
     //         src    dst             REX prefix   opcode     ModR/M      immediate
     //                /cond           [64-bit mode]           [+ disp]
     as& add   ( i8 a,  rb b) { return rex(0, 0, b).imm8(0x80).modrm(0, b).imm8 (a) ; }
-    as& add   (r32 a, r32 b) { return rex(0, a, b).imm8(0x01).modrm(a, b)          ; }
     as& add   ( i8 a, r64 b) { return rex(1, 0, b).imm8(0x83).modrm(0, b).imm8 (a) ; }
     as& add   (i32 a, r64 b) { return rex(1, 0, b).imm8(0x81).modrm(0, b).imm32(a) ; }
+    as& add   (r32 a, r32 b) { return rex(0, a, b).imm8(0x01).modrm(a, b)          ; }
     as& add   (r64 a, r64 b) { return rex(1, a, b).imm8(0x01).modrm(a, b)          ; }
+    as& add   ( i8 a, mem b) { return rex(0, 0, b).imm8(0x83).modrm(0, b).imm8 (a) ; }
     as& and_  ( i8 a,  rb b) { return rex(0, 0, b).imm8(0x80).modrm(4, b).imm8 (a) ; }
     as& call  (i32 a       ) { return              imm8(0xe8).            imm32(a) ; }
     as& call  (LAB a       ) { return              imm8(0xe8).            rel32(a) ; }

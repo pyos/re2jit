@@ -75,6 +75,8 @@ int rejit_thread_init(struct rejit_threadset_t *r)
     r->active_queue = 0;
     r->free = NULL;
     r->running = NULL;
+    r->bitmap_version = -1;
+    r->bitmap_version_last = -1;
 
     if (!r->length)
         r->empty |= RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT;
@@ -247,7 +249,11 @@ void rejit_thread_bitmap_restore(struct rejit_threadset_t *r)
 }
 
 
-void rejit_thread_bitmap_clear(struct rejit_threadset_t *r)
+void rejit_thread_bitmap_clear(struct rejit_threadset_t *r, unsigned int version)
 {
+    if (r->bitmap_version == version)
+        return;
+
     memset(r->visited, 0, (r->states + 7) / 8);
+    r->bitmap_version = version;
 }
