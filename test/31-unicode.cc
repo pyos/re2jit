@@ -21,3 +21,6 @@ MATCH_PERF_TEST(9000, "(\\p{N}*)", ANCHOR_BOTH, "12345 fail 67890", 2);
 // Was initially [\p{Cc}\p{Cn}], but Cn is so large re2 doesn't even support it.
 MATCH_PERF_TEST(9000, "([\\p{Cc}|\\p{Co}]*)", ANCHOR_BOTH, "\033\001\007\003", 2);
 MATCH_PERF_TEST(9000, "([\\p{Cc}|\\p{Co}]*)", ANCHOR_BOTH, "\033[31m", 2);
+// These fake opcodes shouldn't be accidentally treated as literal strings.
+MATCH_TEST("literally \\p{L}", ANCHOR_BOTH, "literally L", 1);
+MATCH_TEST("literally (?:\\p{L})+", ANCHOR_BOTH, "literally LLLLLL", 1);
