@@ -52,17 +52,13 @@ extern "C" {
     struct rejit_thread_t;
     struct rejit_threadset_t;
 
-
-    #if RE2JIT_VM
-        // In VM mode, "entry points" are indices into the opcode array.
-        // TODO not handle that as a special case somehow.
-        typedef size_t rejit_entry_t;
-    #else
-        /* The JIT-compiled code is expected to behave like a function at each opcode,
-         * accepting an NFA as the first "argument" and "returning" when it has exhausted
-         * all empty-length arrows. */
-        typedef void (*rejit_entry_t)(struct rejit_threadset_t *);
-    #endif
+    /* An entry point is a function that takes an NFA and a pointer to a state
+     * and computes an epsilon closure of that state, calling `thread_wait` for each
+     * acceptable non-empty transition reachable from said state. Exactly what
+     * a "state" is is backend-defined -- the pointer passed to this function
+     * is whatever `thread_wait` was called with, no modifications applied.
+     * For example, it may be a pointer to an instruction counter. */
+    typedef void (*rejit_entry_t)(struct rejit_threadset_t *, void *);
 
 
     struct rejit_thread_t
@@ -78,8 +74,8 @@ extern "C" {
          * and this reference is not at the beginning of `struct rejit_thread_t`,
          * we'll have to do some pointer arithmetic. */
         #define RE2JIT_DEREF_THREAD(ref) ((struct rejit_thread_t *)(((char *)(ref)) - offsetof(struct rejit_thread_t, category)))
-        /* Pointer to the beginning of the thread's code. */
-        rejit_entry_t entry;
+        /* Pointer to something describing the thread's current state. */
+        void *state;
         /* If non-zero, decrement and move to the next queue instead of running. */
         size_t wait;
         /* VLA mapping of group indices to indices into the input string.
@@ -106,8 +102,10 @@ extern "C" {
          * visited while handling this input character. Used to avoid infinite
          * loops consisting purely of empty transitions. */
         uint8_t *visited;
-        /* Entry point of the initial thread. */
-        rejit_entry_t entry;
+        /* Initial state of the automaton. */
+        void *initial;
+        /* Function to call to compute the epsilon closure of a single state. */
+        void (*entry)(struct rejit_threadset_t *, void *);
         /* Currently active thread, set by `thread_dispatch`. */
         struct rejit_thread_t *running;
         /* Last (so far) thread forked off the currently running one. Threads are created
@@ -150,7 +148,7 @@ extern "C" {
 
     /* Fork a new thread off the currently running one and make it wait for N more bytes.
      * Always returns 0. */
-    int rejit_thread_wait(struct rejit_threadset_t *, rejit_entry_t, size_t);
+    int rejit_thread_wait(struct rejit_threadset_t *, void *, size_t);
 
     /* Check whether any thread has matched the string, return 1 for a match
      * and 0 otherwise. If a match exists, the thread's array of subgroup locations

@@ -46,12 +46,10 @@ namespace re2jit
 
         _native = new native{_bytecode};
 
-        #if !RE2JIT_VM
-            if (_native->entry() == NULL) {
-                _error = "JIT compilation error";
-                return;
-            }
-        #endif
+        if (_native->entry == NULL) {
+            _error = "JIT compilation error";
+            return;
+        }
 
         if (_pure_re2) {
             re2::Regexp *r = re2::Regexp::Parse(pattern, re2::Regexp::LikePerl, &status);
@@ -117,18 +115,18 @@ namespace re2jit
         }
 
         struct rejit_threadset_t nfa;
-        nfa.input  = text.data();
-        nfa.length = text.size();
-        nfa.groups = 2 * nmatch + 2;
-        nfa.states = _bytecode->size();
-        nfa.entry  = _native->entry();
-        nfa.flags  = flags;
+        nfa.input   = text.data();
+        nfa.length  = text.size();
+        nfa.groups  = 2 * nmatch + 2;
+        nfa.states  = _bytecode->size();
+        nfa.initial = _native->state;
+        nfa.entry   = (rejit_entry_t) _native->entry;
+        nfa.flags   = flags;
 
-        if (!rejit_thread_init(&nfa)) {
+        if (!rejit_thread_init(&nfa))
             return 0;
-        }
 
-        _native->run(&nfa);
+        rejit_thread_dispatch(&nfa);
 
         int *gs, r;
 
