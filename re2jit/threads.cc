@@ -204,6 +204,7 @@ int rejit_thread_result(struct rejit_threadset_t *r, int **groups)
 struct _bitmap_stack
 {
     uint8_t *old_map;
+    uint32_t old_ver;
     uint8_t  new_map[];
 };
 
@@ -215,8 +216,12 @@ int rejit_thread_bitmap_save(struct rejit_threadset_t *r)
 
     RE2JIT_NULL_CHECK(s) return 0;
     memset(s->new_map, 0, (r->states + 7) / 8);
+    // group 1 is the end of whole match; it is set by `thread_match`, but otherwise unused.
+    // it is still inherited by forked threads, though, so we'll store the version there.
+    s->old_ver = r->running->groups[1];
     s->old_map = r->visited;
     r->visited = s->new_map;
+    r->running->groups[1] = ++r->bitmap_version_last;
     return 1;
 }
 
@@ -226,15 +231,16 @@ void rejit_thread_bitmap_restore(struct rejit_threadset_t *r)
     struct _bitmap_stack *s = (struct _bitmap_stack *)
         (r->visited - offsetof(struct _bitmap_stack, new_map));
     r->visited = s->old_map;
+    r->running->groups[1] = s->old_ver;
     free(s);
 }
 
 
-void rejit_thread_bitmap_clear(struct rejit_threadset_t *r, unsigned int version)
+void rejit_thread_bitmap_clear(struct rejit_threadset_t *r)
 {
-    if (r->bitmap_version == version)
+    if (r->bitmap_version == r->running->groups[1])
         return;
 
     memset(r->visited, 0, (r->states + 7) / 8);
-    r->bitmap_version = version;
+    r->bitmap_version = r->running->groups[1];
 }

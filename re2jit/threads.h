@@ -136,8 +136,8 @@ extern "C" {
          * Different "versions" correspond to different contents of `thread->groups`;
          * this is used  to optimize backreferences (which force the engine to repeat
          * same states multiple times). */
-        unsigned int bitmap_version;
-        unsigned int bitmap_version_last;
+        int bitmap_version;
+        int bitmap_version_last;
     };
 
 
@@ -177,7 +177,7 @@ extern "C" {
     void rejit_thread_bitmap_restore(struct rejit_threadset_t *);
 
     /* Fill the current `nfa->visited` with zeroes. */
-    void rejit_thread_bitmap_clear(struct rejit_threadset_t *, unsigned int);
+    void rejit_thread_bitmap_clear(struct rejit_threadset_t *);
 
 #ifdef __cplusplus
 };
