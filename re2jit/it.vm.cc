@@ -49,7 +49,7 @@ struct re2jit::native
                             // not a valid utf-8 character
                             break;
 
-                        rejit_uni_type_t cls = rejit_unicode_category((rejit_uni_char_t) x);
+                        uint8_t cls = rejit_unicode_category((uint32_t) x);
 
                         if ((cls & UNICODE_CATEGORY_GENERAL) != op.arg())
                             break;

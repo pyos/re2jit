@@ -5,9 +5,16 @@ extern "C" {
     #include <stdint.h>
     #include "unicodedata.h"
 
+    /* Return an ID of a category given its 1- or 2-letter name, NULL if unknown. */
+    static inline const uint8_t *rejit_unicode_category_id(const char *s, int sz)
+    {
+        const _rejit_uni_cat_id_t *p = _rejit_uni_cat_id(s, sz);
+        return p->name ? &p->id : NULL;
+    }
+
     /* Return a character's specific category. `&` with UNICODE_CATEGORY_GENERAL
      * to get the general category. */
-    static inline rejit_uni_type_t rejit_unicode_category(rejit_uni_char_t c)
+    static inline uint8_t rejit_unicode_category(uint32_t c)
     {
         return UNICODE_2STAGE_GET(UNICODE_CATEGORY, c);
     }

@@ -36,23 +36,23 @@ namespace re2jit
      *     F    0    code \- arg -/
      *
      */
-    static constexpr const rejit_uni_char_t PSEUDOCODE = 0xF0000ull;
+    static constexpr const uint32_t PSEUDOCODE = 0xF0000ull;
 
     /* Single step of a rewriting algorithm: given a string, a pointer to the first
      * character of an escape sequence, and a pointer to the last character of that same
      * sequence, replace it with an UTF-8 character, and return a pointer to the last
      * byte of that character. */
-    static inline std::string::iterator _rewrite_step(std::string& s,
-                  std::string::iterator pos,
-                  std::string::iterator end, uint8_t op, uint16_t arg)
+    static inline std::string::size_type _rewrite_step(std::string& s,
+                  std::string::size_type pos,
+                  std::string::size_type end, uint8_t op, uint16_t arg)
     {
         // 1111 0000 xxxx xxxx xxxx  ----------> 11110 011  10 110000  10 xxxxxx  10 xxxxxx
         // F    0    x    x    x        UTF-8    F   3      B    0
         uint8_t buf[4] = { 0xF3u, 0xB0u,
                 (uint8_t) (0x80u | (op << 2) | (arg >> 6)),
                 (uint8_t) (0x80u | (arg & 0x3Fu)) };
-        ssize_t off = pos - s.begin() - 1;
-        return s.replace(pos - 1, end + 1, (char *) buf, 4).begin() + off + 3;
+        s.replace(pos, end - pos, (const char *) buf, 4);
+        return pos + 3;
     }
 
 
@@ -66,40 +66,26 @@ namespace re2jit
      */
     static inline bool rewrite(std::string& regexp)
     {
-        auto src = regexp.begin();
+        auto i = std::string::size_type();
         bool is_re2 = true;
 
-        for (; src != regexp.end(); src++) if (*src == '\\') {
-            if (++src == regexp.end())
-                return false;  // invalid syntax: escape character before EOF
+        for (; i < regexp.size() - 1; i++)
+            // backslash cannot be the last character
+            if (regexp[i] == '\\') {
+                if (regexp[i + 1] == 'p') {
+                    // '\p{kind}' -- match a whole Unicode character class
+                    auto lp = regexp.find('{', i);
+                    auto rp = regexp.find('}', i);
 
-            if (*src == 'p') {
-                // '\p{kind}' -- match a whole Unicode character class
-                auto lp = src;
+                    if (lp == std::string::npos || rp == std::string::npos)
+                        return false;  // invalid syntax: unicode class with no name
 
-                if (++lp == regexp.end() || *lp != '{')
-                    return false;  // invalid syntax: unicode class with no name
+                    const uint8_t *id = rejit_unicode_category_id(&regexp[lp + 1], rp - lp - 1);
 
-                auto rp = lp;
-
-                while (*rp != '}')
-                    if (++rp == regexp.end())
-                        return false;  // invalid syntax: mismatched parenthesis
-
-                ++lp;
-
-                if (rp - lp == 1) switch (*lp)
-                {
-                    case 'L':
-                        src = _rewrite_step(regexp, src, rp, inst::kUnicodeType, UNICODE_TYPE_L);
-                        break;
-
-                    case 'N':
-                        src = _rewrite_step(regexp, src, rp, inst::kUnicodeType, UNICODE_TYPE_N);
-                        break;
+                    if (id)
+                        i = _rewrite_step(regexp, i, rp + 1, inst::kUnicodeType, *id);
                 }
             }
-        }
 
         return is_re2;
     }

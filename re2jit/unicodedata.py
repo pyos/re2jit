@@ -1,12 +1,20 @@
 import os
 import textwrap
 import itertools
+import subprocess
 import unicodedata
 
 
 def writeinto(file, data, *args, **kwargs):
     with open(file, 'w') as fd:
         print(textwrap.dedent(data).format(*args, **kwargs), file=fd)
+
+
+def gperf(xs, name, struct, initial):
+    return subprocess.check_output(
+        ['gperf', '-N', name, '-H', name + '_hash', '-F', initial, '-ctCEIL', 'ANSI-C', '--null-strings'],
+        input='struct {}_t {{ {} }};\n%%\n'.format(name, struct).encode('utf-8') +
+              '\n'.join(','.join(map(str, x)) for x in xs).encode('utf-8')).decode('utf-8')
 
 
 SPACE_SIZE = 0x110000  # max. code point + 1
@@ -60,22 +68,17 @@ writeinto(os.path.join(os.path.dirname(__file__), 'unicodedata.h'),
     #include <stdint.h>
     #define UNICODE_2STAGE_GET(t, c) t##_2[(c) % (1 << {1}) + t##_1[(c) >> {1}]]
 
-    typedef uint8_t  rejit_uni_type_t;
-    typedef uint16_t rejit_bmp_char_t;
-    typedef uint32_t rejit_uni_char_t;
+    static const uint32_t UNICODE_SPACE_SIZE = {0};
+    static const uint32_t UNICODE_BLOCK_SIZE = {1};
 
-    static const rejit_uni_char_t UNICODE_SPACE_SIZE = {0};
-    static const rejit_uni_char_t UNICODE_BLOCK_SIZE = {1};
-
-    extern const rejit_uni_char_t UNICODE_CATEGORY_1[];
-    extern const rejit_uni_type_t UNICODE_CATEGORY_2[];
-    static const rejit_uni_type_t UNICODE_CATEGORY_GENERAL = 0x0F;
+    extern const uint32_t UNICODE_CATEGORY_1[];
+    extern const uint8_t  UNICODE_CATEGORY_2[];
+    static const uint8_t  UNICODE_CATEGORY_GENERAL = 0x0F;
     {2}
     ''',
     SPACE_SIZE,
     BLOCK_SIZE,
-    '\n'.join('static const rejit_uni_type_t UNICODE_TYPE_{} = {};'.format(k, v)
-              for k, v in TABLE_CATEGORY_N.items())
+    gperf(TABLE_CATEGORY_N.items(), '_rejit_uni_cat_id', 'const char *name; uint8_t id;', ', 0'),
 )
 
 
@@ -83,8 +86,8 @@ writeinto(os.path.join(os.path.dirname(__file__), 'unicodedata.cc'),
     '''
     #include "unicodedata.h"
 
-    extern const rejit_uni_char_t UNICODE_CATEGORY_1[] = {{ {} }};
-    extern const rejit_uni_type_t UNICODE_CATEGORY_2[] = {{ {} }};
+    extern const uint32_t UNICODE_CATEGORY_1[] = {{ {} }};
+    extern const uint8_t  UNICODE_CATEGORY_2[] = {{ {} }};
     ''',
     ','.join(str(x)                   for x in TABLE_CATEGORY_1),
     ','.join(str(TABLE_CATEGORY_N[x]) for x in TABLE_CATEGORY_2),
