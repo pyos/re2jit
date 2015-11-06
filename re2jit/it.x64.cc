@@ -76,7 +76,8 @@ struct re2jit::native
                         if (!indegree[op->out()])
                             *stptr++ = op->out();
                         // subsequent byte ranges are concatenated into one block of code
-                        if (prog->inst(op->out())->opcode() != re2::kInstByteRange)
+                        auto next = prog->inst(op->out());
+                        if (next->opcode() != re2::kInstByteRange && !re2jit::maybe_extcode(next))
                             indegree[op->out()]++;
                 }
         }
@@ -213,7 +214,7 @@ struct re2jit::native
                 case re2::kInstByteRange: {
                     std::vector<re2::Prog::Inst *> seq{ op };
 
-                    while ((op = prog->inst(op->out()))->opcode() == re2::kInstByteRange)
+                    while ((op = prog->inst(op->out()))->opcode() == re2::kInstByteRange && !re2jit::maybe_extcode(op))
                         seq.push_back(op);
 
                     // if (nfa->length < len) return; else rsi = nfa->input;
