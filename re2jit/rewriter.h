@@ -35,9 +35,6 @@ namespace re2jit
      *     1111 0000 xxxx xxxx xxxx
      *     F    0    code \- arg -/
      *
-     * All UTF-8 points of this form look like 0xF3 0xB0 0xYY 0xYY
-     * where (0xYY & 0xC0) == 0x80.
-     *
      */
     static constexpr const rejit_uni_char_t PSEUDOCODE = 0xF0000ull;
 
@@ -49,6 +46,8 @@ namespace re2jit
                   std::string::iterator pos,
                   std::string::iterator end, uint8_t op, uint16_t arg)
     {
+        // 1111 0000 xxxx xxxx xxxx  ----------> 11110 011  10 110000  10 xxxxxx  10 xxxxxx
+        // F    0    x    x    x        UTF-8    F   3      B    0
         uint8_t buf[4] = { 0xF3u, 0xB0u,
                 (uint8_t) (0x80u | (op << 2) | (arg >> 6)),
                 (uint8_t) (0x80u | (arg & 0x3Fu)) };
