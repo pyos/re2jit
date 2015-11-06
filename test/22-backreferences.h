@@ -72,7 +72,7 @@ static inline bool regex_3sat_run(int inputs, int clauses, int (*cl)[3], bool *o
                                                                                         \
         for (int __k = 0; __k < inputs; __k++) buf[__k] = var[__k] ? '1' : '0';         \
         if (ans == expect)                                                              \
-            return Result::Pass(ans ? "%s" : "no answer", buf);                         \
+            return Result::Pass(ans ? "%s" : "none", buf);                              \
         else                                                                            \
-            return Result::Fail(ans ? "%s" : "no answer", buf);                         \
+            return Result::Fail(ans ? "%s" : "none", buf);                              \
     }
