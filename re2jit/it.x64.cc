@@ -117,6 +117,34 @@ struct re2jit::native
                                 .pop  (as::rdi);
                             EMIT_NEXT(op.out());
                             break;
+
+                        case re2jit::inst::kBackReference:
+                            // if (nfa->groups <= arg * 2) return;
+                            code.cmp(as::i32(op.arg() * 2), as::mem(as::rdi + &NFA->groups))
+                                .jmp(fail, as::less_equal_u)  // wasn't enough space to record that group
+                            // if (start == -1 || end < start) return;
+                                .mov(as::mem(as::rdi + &NFA->running), as::rsi)
+                                .mov(as::mem(as::rsi + &THREAD->groups[op.arg() * 2 + 1]), as::ecx)
+                                .mov(as::mem(as::rsi + &THREAD->groups[op.arg() * 2]),     as::esi)
+                                .cmp(as::i8(-1), as::esi).jmp(fail, as::equal)
+                                .sub(as::esi,    as::ecx).jmp(fail, as::less)
+                            // if (start == end) goto out;
+                                .jmp(labels[op.out()], as::equal)  // empty subgroup = empty transition
+                            // if (nfa->length < end - start) return;
+                                .cmp(as::rcx, as::mem(as::rdi + &NFA->length)).jmp(fail, as::less_u)
+                            // if (memcmp(nfa->input, nfa->input + start - nfa->offset, end - start)) return;
+                                .mov(as::ecx, as::edx)
+                                .mov(as::rdi, as::rax)
+                                .mov(as::mem(as::rax + &NFA->input),  as::rdi)
+                                .sub(as::mem(as::rax + &NFA->offset), as::rsi)
+                                .add(as::rdi, as::rsi)
+                                .repz().cmpsb().jmp(fail, as::not_equal)
+                            // return rejit_thread_wait(nfa, &out, end - start);
+                                .mov(as::rax, as::rdi)
+                                .mov(labels[op.out()], as::rsi)
+                                .jmp(&rejit_thread_wait);
+                            EMIT_NEXT(op.out());
+                            break;
                     }
 
                     code.test(as::eax, as::eax).jmp(succeed, as::not_zero).mark(fail);

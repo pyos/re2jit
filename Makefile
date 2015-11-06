@@ -47,6 +47,7 @@ _require_test_run = \
 	test/13-exponential \
 	test/20-submatching \
 	test/21-lastgroup \
+	test/22-backreferences \
 	test/30-long \
 	test/31-unicode
 
