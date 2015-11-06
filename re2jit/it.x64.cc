@@ -82,9 +82,9 @@ struct re2jit::native
                 }
         }
 
-        // NFA library will call this code with itself (%rdi) and a state (%rsi).
+        // NFA will call this code with itself (%rdi) and a state (%rsi).
         // In our case, the state is a pointer to actual code to execute.
-        // Each thread has its own group indices...
+        // Each thread has its own array of group indices...
         if (backreferences.size())
             // ...so it must have its own zero-filled bit vector of visited states.
             code.push(as::rdi)
