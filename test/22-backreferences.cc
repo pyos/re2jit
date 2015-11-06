@@ -16,6 +16,23 @@ FIXED_TEST("(?i)<([A-Z][A-Z0-9]*)(?:[^A-Z0-9>][^>]*)?>.*?</\\1>", UNANCHORED, "s
 FIXED_TEST("(?i)<([A-Z][A-Z0-9]*)(?:[^A-Z0-9>][^>]*)?>.*?</\\1>", UNANCHORED, "no <boo class='x'>bold</b> text", false);
 // That was easy. What if the match is not obvious?
 FIXED_TEST("(?i)([A-Z0-9]+)([A-Z0-9]+)\\2\\1", UNANCHORED, "notregularregularnot", true, "notregularregularnot", "not", "regular");
+// Ah, Perl...
+REGEX_PRIMALITY_TEST(2, 0);
+REGEX_PRIMALITY_TEST(3, 0);
+REGEX_PRIMALITY_TEST(7, 0);
+REGEX_PRIMALITY_TEST(13, 0);
+REGEX_PRIMALITY_TEST(53, 0);
+REGEX_PRIMALITY_TEST(101, 0);
+REGEX_PRIMALITY_TEST(557, 0);
+REGEX_PRIMALITY_TEST(1429, 0);
+REGEX_PRIMALITY_TEST(4, 2);
+REGEX_PRIMALITY_TEST(10, 2);
+REGEX_PRIMALITY_TEST(25, 5);
+REGEX_PRIMALITY_TEST(32, 2);
+REGEX_PRIMALITY_TEST(75, 3);
+REGEX_PRIMALITY_TEST(143, 11);
+REGEX_PRIMALITY_TEST(1333, 31);
+REGEX_PRIMALITY_TEST(1728, 2);
 // And we've gone NP-complete.
-REGEX_3SAT_TEST(3, true, {{1, 2, -3}, {1, -2, 3}, {-1, -2, 3}, {-1, -2, -3}});
-REGEX_3SAT_TEST(3, false, {{1, 2, 3}, {1, 2, -3}, {1, -2, 3}, {1, -2, -3}, {-1, 2, 3}, {-1, 2, -3}, {-1, -2, 3}, {-1, -2, -3}});
+REGEX_3SAT_TEST(3, true, {{1,2,-3},{1,-2,3},{-1,-2,3},{-1,-2,-3}});
+REGEX_3SAT_TEST(3, false, {{1,2,3},{1,2,-3},{1,-2,3},{1,-2,-3},{-1,2,3},{-1,2,-3},{-1,-2,3},{-1,-2,-3}});

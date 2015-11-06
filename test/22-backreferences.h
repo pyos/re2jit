@@ -8,6 +8,20 @@ static int iabs(int i)
 }
 
 
+// http://perl5.git.perl.org/perl.git/blob/d5e45555fc406945bd8e4694adaab59e4f99120e:/t/japh/abigail.t#l74
+#define REGEX_PRIMALITY_TEST(input, expect)                               \
+    test_case("primality test of " FG CYAN #input FG RESET) {             \
+        std::string inp(input, '1');                                      \
+        re2::StringPiece buf[2];                                          \
+        re2jit::it("1?|(11+?)\\1+").match(inp, RE2::ANCHOR_BOTH, buf, 2); \
+        int  div = buf[1].size();                                         \
+        if (div == expect)                                                \
+            return Result::Pass(div ? "= k * %d" : "-- prime", div);      \
+        else                                                              \
+            return Result::Fail(div ? "= k * %d" : "-- prime", div);      \
+    }
+
+
 // http://perl.plover.com/NPC/NPC-3SAT.html
 static std::string regex_3sat_input(int inputs, int clauses)
 {
