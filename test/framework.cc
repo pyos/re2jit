@@ -33,8 +33,6 @@ struct TestCase {
 };
 
 
-// TEST = test definition file, TESTH = accompanying header file.
-#include escape_macro(TESTH)
 #include <stdio.h>
 
 #define FG_HIDE "\033[8m"
@@ -49,6 +47,8 @@ struct TestCase {
 #define CYAN    "6m"
 #define GRAY    "7m"
 #define RESET   "9m"
+// TEST = test definition file, TESTH = accompanying header file.
+#include escape_macro(TESTH)
 
 
 TestCase TESTS[] = {
