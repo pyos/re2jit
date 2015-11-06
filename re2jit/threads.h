@@ -25,6 +25,13 @@ extern "C" {
 
     #include "list.h"
 
+    // It's easier to crash than to handle out-of-memory errors.
+    #ifdef RE2JIT_ABSOLUTELY_DONT_CRASH
+        #define RE2JIT_NULL_CHECK(x) if ((x) == NULL)
+    #else
+        #define RE2JIT_NULL_CHECK(x) (void) (x); if (0)
+    #endif
+
 
     enum RE2JIT_THREAD_ANCHOR {
         /* If start point is unanchored, we want to create a copy of the initial thread

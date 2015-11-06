@@ -19,9 +19,7 @@ static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
     t = (struct rejit_thread_t *) malloc(sizeof(struct rejit_thread_t)
                                        + sizeof(int) * r->groups);
 
-    if (t == NULL)
-        return NULL;
-
+    RE2JIT_NULL_CHECK(t) return NULL;
     rejit_list_init(&t->category);
     rejit_list_init(t);
     t->wait = 0;
@@ -33,9 +31,7 @@ static struct rejit_thread_t *rejit_thread_fork(struct rejit_threadset_t *r)
 {
     struct rejit_thread_t *t = rejit_thread_acquire(r);
 
-    if (t == NULL)
-        return NULL;
-
+    RE2JIT_NULL_CHECK(t) return NULL;
     memcpy(t->groups, r->running->groups, sizeof(int) * r->groups);
     rejit_list_append(r->forked, t);
     return r->forked = t;
@@ -46,9 +42,7 @@ static struct rejit_thread_t *rejit_thread_entry(struct rejit_threadset_t *r)
 {
     struct rejit_thread_t *t = rejit_thread_acquire(r);
 
-    if (t == NULL)
-        return NULL;
-
+    RE2JIT_NULL_CHECK(t) return NULL;
     memset(t->groups, 255, sizeof(int) * r->groups);
     t->state = r->initial;
     t->groups[0] = r->offset;
@@ -63,13 +57,9 @@ int rejit_thread_init(struct rejit_threadset_t *r)
     rejit_list_init(&r->all_threads);
 
     r->visited = (uint8_t *) calloc(sizeof(uint8_t), (r->states + 7) / 8);
-
-    if (r->visited == NULL)
-        return 0;
-
+    RE2JIT_NULL_CHECK(r->visited) return 0;
     rejit_list_init(&r->queues[0]);
     rejit_list_init(&r->queues[1]);
-
     r->empty = RE2JIT_EMPTY_BEGIN_LINE | RE2JIT_EMPTY_BEGIN_TEXT;
     r->offset = 0;
     r->active_queue = 0;
@@ -81,7 +71,7 @@ int rejit_thread_init(struct rejit_threadset_t *r)
     if (!r->length)
         r->empty |= RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT;
 
-    if (rejit_thread_entry(r) == NULL) {
+    RE2JIT_NULL_CHECK(rejit_thread_entry(r)) {
         free(r->visited);
         r->visited = NULL;
         return 0;
@@ -158,7 +148,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r)
         // Word boundaries not supported because UTF-8.
 
         if (!(r->flags & RE2JIT_ANCHOR_START))
-            if (rejit_thread_entry(r) == NULL) {
+            RE2JIT_NULL_CHECK(rejit_thread_entry(r)) {
                 // XOO < *ac was completely screwed out of memory
                 //        and nothing can fix that!!*
             }
@@ -173,10 +163,7 @@ int rejit_thread_match(struct rejit_threadset_t *r)
         return 0;
 
     struct rejit_thread_t *t = rejit_thread_fork(r);
-
-    if (t == NULL)
-        return 0;
-
+    RE2JIT_NULL_CHECK(t) return 0;
     t->groups[1] = r->offset;
 
     while (t->next != rejit_list_end(&r->all_threads)) {
@@ -196,11 +183,7 @@ int rejit_thread_match(struct rejit_threadset_t *r)
 int rejit_thread_wait(struct rejit_threadset_t *r, void *state, size_t shift)
 {
     struct rejit_thread_t *t = rejit_thread_fork(r);
-
-    if (t == NULL)
-        // :33 < oh shit
-        return 0;
-
+    RE2JIT_NULL_CHECK(t) return 0;
     t->state = state;
     t->wait = shift - 1;
     rejit_list_append(r->queues[!r->active_queue].last, &t->category);
