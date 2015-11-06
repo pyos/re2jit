@@ -213,9 +213,7 @@ int rejit_thread_bitmap_save(struct rejit_threadset_t *r)
     struct _bitmap_stack *s = (struct _bitmap_stack *)
         malloc(sizeof(struct _bitmap_stack) + (r->states + 7) / 8);
 
-    if (s == NULL)
-        return 0;
-
+    RE2JIT_NULL_CHECK(s) return 0;
     memset(s->new_map, 0, (r->states + 7) / 8);
     s->old_map = r->visited;
     r->visited = s->new_map;
