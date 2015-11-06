@@ -1,4 +1,5 @@
 #include <vector>
+#include <unordered_set>
 #include <sys/mman.h>
 
 #include "it.x64.asm.h"
@@ -21,20 +22,19 @@ struct re2jit::native
         as code;
         std::vector<as::label> labels(n);
 
-        // NFA library will call this code with itself (%rdi) and a state (%rsi).
-        // In our case, the state is a pointer to actual code to execute.
-        code.jmp(as::rsi);
-
-        as::label fail;     // jump here to return 0
-        as::label succeed;  // jump here to return 1 (if a matching state is reachable)
-        code.mark(fail).xor_(as::eax, as::eax).mark(succeed).ret();
-
         // How many transitions have the i-th opcode as a target.
         // Opcodes with indegree 1 don't need to be tracked in the bit vector
         // (as there is only one way to reach them and we've already checked that).
         // Opcodes with indegree 0 are completely unreachable, no need to compile those.
         std::vector< unsigned > indegree(n);
         std::vector< unsigned > emitted(n);
+        // If the regexp contains backreferences, we have to fall back to sort-of
+        // backtracking. Well, *technically*, we can simply replace our bit vector
+        // of `m` visited states with a bit vector of `m * n ** (2 * k)` states
+        // where `k` is the number of (referenced) groups and `n` is the length of input.
+        // You thought the `m * n` bits required to make backtrackers run in linear time
+        // was a lot? Think again.
+        std::unordered_set< unsigned > backreferences;
 
         ssize_t *stack = new ssize_t[prog->size()];
         ssize_t *stptr = stack;
@@ -44,9 +44,18 @@ struct re2jit::native
             auto op  = prog->inst(*--stptr);
             auto vec = re2jit::is_extcode(prog, op);
 
-            for (auto& op : vec)
+            for (auto& op : vec) {
+                if (op.opcode() == re2jit::inst::kBackReference)
+                    // Note that the fact that a regex with backreferences requires
+                    // at most O(m * n ** (2 * k + 1)) time to match does not prove
+                    // P = NP in any way. Reducing 3-SAT to PCRE matching is done
+                    // by constructing a regex in which m = k = O(n). O(n * n ** n)?
+                    // That's worse than brute-force.
+                    backreferences.insert(op.arg());
+
                 if (!indegree[op.out()]++)
                     *stptr++ = op.out();
+            }
 
             if (!vec.size())
                 switch (op->opcode()) {
@@ -71,6 +80,25 @@ struct re2jit::native
                             indegree[op->out()]++;
                 }
         }
+
+        // NFA library will call this code with itself (%rdi) and a state (%rsi).
+        // In our case, the state is a pointer to actual code to execute.
+        // Each thread has its own group indices...
+        if (backreferences.size())
+            // ...so it must have its own zero-filled bit vector of visited states.
+            code.push(as::rdi)
+                .push(as::rsi)
+                .call(&rejit_thread_bitmap_clear)
+                .pop (as::rsi)
+                .pop (as::rdi)
+                .jmp (as::rsi);
+        else
+            // ...but we don't care, so we can simply jump to actual code.
+            code.jmp(as::rsi);
+
+        as::label fail;     // jump here to return 0
+        as::label succeed;  // jump here to return 1 (if a matching state is reachable)
+        code.mark(fail).xor_(as::eax, as::eax).mark(succeed).ret();
 
         emitted[*stptr++ = prog->start()]++;
 
@@ -126,7 +154,9 @@ struct re2jit::native
                             EMIT_NEXT(op.out());
                             break;
 
-                        case re2jit::inst::kBackReference:
+                        case re2jit::inst::kBackReference: {
+                            as::label empty;
+
                             // if (nfa->groups <= arg * 2) return;
                             code.cmp(as::i32(op.arg() * 2), as::mem(as::rdi + &NFA->groups))
                                 .jmp(fail, as::less_equal_u)  // wasn't enough space to record that group
@@ -136,23 +166,31 @@ struct re2jit::native
                                 .mov(as::mem(as::rsi + &THREAD->groups[op.arg() * 2]),     as::esi)
                                 .cmp(as::i8(-1), as::esi).jmp(fail, as::equal)
                                 .sub(as::esi,    as::ecx).jmp(fail, as::less)
-                            // if (start == end) goto out;
-                                .jmp(labels[op.out()], as::equal)  // empty subgroup = empty transition
+                            // if (start == end) goto empty;
+                                .jmp(empty, as::equal)
                             // if (nfa->length < end - start) return;
                                 .cmp(as::rcx, as::mem(as::rdi + &NFA->length)).jmp(fail, as::less_u)
                             // if (memcmp(nfa->input, nfa->input + start - nfa->offset, end - start)) return;
-                                .mov(as::ecx, as::edx)
-                                .mov(as::rdi, as::rax)
-                                .mov(as::mem(as::rax + &NFA->input),  as::rdi)
-                                .sub(as::mem(as::rax + &NFA->offset), as::rsi)
-                                .add(as::rdi, as::rsi)
-                                .repz().cmpsb().jmp(fail, as::not_equal)
+                                .push(as::rdi)
+                                .sub (as::mem(as::rdi + &NFA->offset), as::rsi)
+                                .mov (as::mem(as::rdi + &NFA->input),  as::rdi)
+                                .mov (as::ecx, as::edx)
+                                .add (as::rdi, as::rsi)
+                                .repz().cmpsb().pop(as::rdi).jmp(fail, as::not_equal)
                             // return rejit_thread_wait(nfa, &out, end - start);
-                                .mov(as::rax, as::rdi)
-                                .mov(labels[op.out()], as::rsi)
-                                .jmp(&rejit_thread_wait);
+                                .mov (labels[op.out()], as::rsi)
+                                .push(as::rdi)
+                                .call(&rejit_thread_wait)
+                                .pop (as::rdi)
+                                .jmp (fail)
+                            // empty: eax = out(nfa);
+                                .mark(empty)
+                                .push(as::rdi)
+                                .call(labels[op.out()])
+                                .pop (as::rdi);
                             EMIT_NEXT(op.out());
                             break;
+                        }
                     }
 
                     code.test(as::eax, as::eax).jmp(succeed, as::not_zero).mark(fail);
@@ -219,11 +257,20 @@ struct re2jit::native
                         .mov  (as::mem(as::rdi + &NFA->offset),  as::eax)
                         .mov  (as::mem(as::rcx + &THREAD->groups[op->cap()]), as::esi)
                         .mov  (as::eax, as::mem(as::rcx + &THREAD->groups[op->cap()]))
-                    // eax = out(nfa);
                         .push (as::rsi)
-                        .push (as::rcx)
-                        .call (labels[op->out()])
-                        .pop  (as::rcx)
+                        .push (as::rcx);
+
+                    if (backreferences.find(op->cap() / 2) != backreferences.end())
+                        // rejit_thread_bitmap_save(nfa); eax = out(nfa);
+                        // rejit_thread_bitmap_restore(nfa);
+                        code.push (as::rdi).call(&rejit_thread_bitmap_save)    .pop(as::rdi)
+                            .push (as::rdi).call(labels[op->out()])            .pop(as::rdi)
+                            .push (as::rax).call(&rejit_thread_bitmap_restore) .pop(as::rax);
+                    else
+                        // eax = out(nfa)
+                        code.call(labels[op->out()]);
+
+                    code.pop  (as::rcx)
                         .pop  (as::rsi)
                     // nfa->running->groups[cap] = esi; return eax;
                         .mov  (as::esi, as::mem(as::rcx + &THREAD->groups[op->cap()]))

@@ -214,3 +214,40 @@ int rejit_thread_result(struct rejit_threadset_t *r, int **groups)
     *groups = r->all_threads.first->groups;
     return 1;
 }
+
+
+struct _bitmap_stack
+{
+    uint8_t *old_map;
+    uint8_t  new_map[];
+};
+
+
+int rejit_thread_bitmap_save(struct rejit_threadset_t *r)
+{
+    struct _bitmap_stack *s = (struct _bitmap_stack *)
+        malloc(sizeof(struct _bitmap_stack) + (r->states + 7) / 8);
+
+    if (s == NULL)
+        return 0;
+
+    memset(s->new_map, 0, (r->states + 7) / 8);
+    s->old_map = r->visited;
+    r->visited = s->new_map;
+    return 1;
+}
+
+
+void rejit_thread_bitmap_restore(struct rejit_threadset_t *r)
+{
+    struct _bitmap_stack *s = (struct _bitmap_stack *)
+        (r->visited - offsetof(struct _bitmap_stack, new_map));
+    r->visited = s->old_map;
+    free(s);
+}
+
+
+void rejit_thread_bitmap_clear(struct rejit_threadset_t *r)
+{
+    memset(r->visited, 0, (r->states + 7) / 8);
+}

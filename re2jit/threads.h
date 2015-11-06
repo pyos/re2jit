@@ -156,6 +156,15 @@ extern "C" {
      * `rejit_thread_dispatch` did not return 0), behavior is undefined. */
     int rejit_thread_result(struct rejit_threadset_t *, int **);
 
+    /* Replace `nfa->visited` with an empty bit vector, but save the old one for later. */
+    int rejit_thread_bitmap_save(struct rejit_threadset_t *);
+
+    /* Restore a previous value of `nfa->visited`. */
+    void rejit_thread_bitmap_restore(struct rejit_threadset_t *);
+
+    /* Fill the current `nfa->visited` with zeroes. */
+    void rejit_thread_bitmap_clear(struct rejit_threadset_t *);
+
 #ifdef __cplusplus
 };
 #endif
