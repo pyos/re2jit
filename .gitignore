@@ -1,0 +1,7 @@
+*.a
+*.o
+*.so
+/obj
+/re2jit/unicodedata.h
+/re2jit/unicodedata.cc
+__pycache__
