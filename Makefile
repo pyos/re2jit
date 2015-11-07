@@ -17,6 +17,7 @@ _require_vendor = \
 
 
 _require_headers = \
+	re2/.git \
 	re2jit/it.h \
 	re2jit/list.h \
 	re2jit/threads.h \
