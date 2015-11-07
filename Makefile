@@ -41,6 +41,7 @@ _require_library = \
 
 
 _require_test_run = \
+	test/01-invalid \
 	test/10-literal \
 	test/11-anchoring \
 	test/12-branching \
@@ -64,8 +65,8 @@ CMPTEST = $(CXX) $(CXXFLAGS) $(_testopt) -std=c++11 -I. -I./re2 -L./obj -L./re2/
 .PHONY: all clean test test/%
 .PRECIOUS: \
 	obj/%.o \
-	obj/libre2.a \
-	obj/libre2.so \
+	obj/libre2jit.a \
+	obj/libre2jit.so \
 	obj/test/%
 
 
