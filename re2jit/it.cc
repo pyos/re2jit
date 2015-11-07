@@ -122,6 +122,7 @@ namespace re2jit
         nfa.initial = _native->state;
         nfa.entry   = (rejit_entry_t) _native->entry;
         nfa.flags   = flags;
+        _native->init();
 
         if (!rejit_thread_init(&nfa))
             return 0;

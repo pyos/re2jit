@@ -1,8 +1,8 @@
 #include <vector>
-
 #define STACK_SIZE 1024
 
 
+static thread_local re2jit::native *_this;
 struct re2jit::native
 {
     void * entry;
@@ -12,7 +12,7 @@ struct re2jit::native
     // Since we can't make a pointer to a stack-allocated object's field
     // (as it's going to be destroyed soon), we'll preallocate an array
     // of possible values and refer to these.
-    std::vector<int64_t> _numbers;
+    std::vector<int32_t> _numbers;
 
     native(re2::Prog *prog) : _prog(prog), _numbers(prog->size())
     {
@@ -20,28 +20,29 @@ struct re2jit::native
             _numbers[i] = i;
 
         state = &_numbers[prog->start()];
-        entry = NULL;
-     // entry = ??? need to somehow bind `step` to `this`
+        entry = (void *) &step;
     }
 
-    void step(struct rejit_threadset_t *nfa, void *inst)
+    void init() const
+    {
+        _this = const_cast<re2jit::native *>(this);
+    }
+
+    static void step(struct rejit_threadset_t *nfa, void *inst)
     {
         struct rejit_thread_t *t = nfa->running;
 
         union {
-            int64_t state;
             // state >= 0 -- visit another state
             // state <  0 -- restore a captuing group's boundary
-            struct {
-                int32_t group;
-                int32_t index;
-            };
+            struct { int32_t state, _____; };
+            struct { int32_t group, index; };
         } stack[STACK_SIZE];
 
-        stack[0].state = *(int64_t *) inst;
+        stack[0].state = *(int32_t *) inst;
 
-        for (size_t stkid = 1; stkid; stkid--) {
-            int64_t i = stack[stkid].state;
+        for (size_t stkid = 1; stkid;) {
+            int32_t i = stack[--stkid].state;
 
             if (i < 0) {
                 t->groups[-stack[stkid].group] = stack[stkid].index;
@@ -53,8 +54,8 @@ struct re2jit::native
 
             nfa->visited[i / 8] |= 1 << (i % 8);
 
-            auto op  = _prog->inst(i);
-            auto vec = re2jit::is_extcode(_prog, op);
+            auto op  = _this->_prog->inst(i);
+            auto vec = re2jit::is_extcode(_this->_prog, op);
 
             for (auto& op : vec) switch (op.opcode())
             {
@@ -69,7 +70,7 @@ struct re2jit::native
                     if ((cls & UNICODE_CATEGORY_GENERAL) != op.arg())
                         break;
 
-                    rejit_thread_wait(nfa, &_numbers[op.out()], x >> 32);
+                    rejit_thread_wait(nfa, &_this->_numbers[op.out()], x >> 32);
                     break;
                 }
 
@@ -96,7 +97,7 @@ struct re2jit::native
                     if (memcmp(nfa->input, nfa->input - nfa->offset + start, end - start))
                         break;
 
-                    rejit_thread_wait(nfa, &_numbers[op.out()], end - start);
+                    rejit_thread_wait(nfa, &_this->_numbers[op.out()], end - start);
                     break;
                 }
             }
@@ -121,7 +122,7 @@ struct re2jit::native
                     if (c < op->lo() || c > op->hi())
                         break;
 
-                    rejit_thread_wait(nfa, &_numbers[op->out()], 1);
+                    rejit_thread_wait(nfa, &_this->_numbers[op->out()], 1);
                     break;
                 }
 

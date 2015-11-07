@@ -10,6 +10,7 @@ static const struct rejit_thread_t    *THREAD = NULL;
 
 struct re2jit::native
 {
+    void init() {}
     void * entry;
     void * state;
     size_t _size;
