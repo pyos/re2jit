@@ -2,10 +2,10 @@ MATCH_TEST("[xy]", ANCHOR_BOTH, "x", 1);
 MATCH_TEST("[xy]", ANCHOR_BOTH, "y", 1);
 MATCH_TEST("[xy]", ANCHOR_BOTH, "z", 1);
 
-MATCH_TEST("(x|y|)", ANCHOR_BOTH, "", 1);
-MATCH_TEST("(x|y|)", ANCHOR_BOTH, "x", 1);
-MATCH_TEST("(x|y|)", ANCHOR_BOTH, "y", 1);
-MATCH_TEST("(x|y|)", ANCHOR_BOTH, "z", 1);
+MATCH_TEST("(x|z|)", ANCHOR_BOTH, "", 1);
+MATCH_TEST("(x|z|)", ANCHOR_BOTH, "x", 1);
+MATCH_TEST("(x|z|)", ANCHOR_BOTH, "y", 1);
+MATCH_TEST("(x|z|)", ANCHOR_BOTH, "z", 1);
 
 MATCH_TEST("x*", ANCHOR_BOTH, "", 1);
 MATCH_TEST("x*", ANCHOR_BOTH, "x", 1);
