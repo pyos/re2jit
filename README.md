@@ -58,7 +58,7 @@ Ugh.)
 ### Supported platforms
 
  * x86-64 on \*nix (System V calling convention **required**)
- * Everything else - only through an interpreter, which is a slightly slower version of re2's
+ * Everything else - only through an interpreter, which is a ~~slightly~~ much slower version of re2's
    NFA. At least, most of the time it *is* slightly slower. Sometimes it is a lot faster
    for some reason, which is pretty weird. (For an example see
    [test/30-long.cc](https://github.com/pyos/re2jit/blob/master/test/30-long.cc#L7).)
