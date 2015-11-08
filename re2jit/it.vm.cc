@@ -1,4 +1,5 @@
 #include <vector>
+#include <unordered_set>
 #define STACK_SIZE 1024
 
 
@@ -13,11 +14,17 @@ struct re2jit::native
     // (as it's going to be destroyed soon), we'll preallocate an array
     // of possible values and refer to these.
     std::vector<int32_t> _numbers;
+    std::unordered_set<uint32_t> _backrefs;
 
     native(re2::Prog *prog) : _prog(prog), _numbers(prog->size())
     {
-        for (ssize_t i = 0; i < prog->size(); i++)
+        for (ssize_t i = 0; i < prog->size(); i++) {
             _numbers[i] = i;
+
+            for (auto op : re2jit::is_extcode(prog, prog->inst(i)))
+                if (op.opcode() == re2jit::inst::kBackReference)
+                    _backrefs.insert(op.arg());
+        }
 
         state = &_numbers[prog->start()];
         entry = (void *) &step;
@@ -41,11 +48,19 @@ struct re2jit::native
 
         stack[0].state = *(int32_t *) inst;
 
+        int32_t new_bitmaps = 0;
+        rejit_thread_bitmap_clear(nfa);
+
         for (size_t stkid = 1; stkid;) {
             int32_t i = stack[--stkid].state;
 
             if (i < 0) {
-                t->groups[-stack[stkid].group] = stack[stkid].index;
+                if (_this->_backrefs.find(-i / 2) != _this->_backrefs.end()) {
+                    rejit_thread_bitmap_restore(nfa);
+                    new_bitmaps--;
+                }
+
+                t->groups[-i] = stack[stkid].index;
                 continue;
             }
 
@@ -133,6 +148,11 @@ struct re2jit::native
                         stkid++;
 
                         t->groups[op->cap()] = nfa->offset;
+
+                        if (_this->_backrefs.find(op->cap() / 2) != _this->_backrefs.end()) {
+                            rejit_thread_bitmap_save(nfa);
+                            new_bitmaps++;
+                        }
                     }
 
                     stack[stkid++].state = op->out();
@@ -148,9 +168,13 @@ struct re2jit::native
                     break;
 
                 case re2::kInstMatch:
-                    if (rejit_thread_match(nfa))
+                    if (rejit_thread_match(nfa)) {
                         // this match is preferred to whatever is still on stack.
+                        // have to deallocate the new bitmaps, though.
+                        while (new_bitmaps--) rejit_thread_bitmap_restore(nfa);
                         return;
+                    }
+
                     break;
 
                 case re2::kInstFail:
