@@ -20,7 +20,7 @@ struct re2jit::native
         size_t i;
         size_t n = prog->size();
 
-        as code;
+        as::code code;
         std::vector<as::label> labels(n);
 
         // How many transitions have the i-th opcode as a target.
@@ -317,7 +317,7 @@ struct re2jit::native
         }
 
         entry = target;
-        state = code.dereference(target, labels[prog->start()]);
+        state = labels[prog->start()]->deref(target);
         _size = code.size();
     }
 
