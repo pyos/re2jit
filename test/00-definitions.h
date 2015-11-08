@@ -9,60 +9,84 @@
     FG GREEN #regex FG RESET " on " FG CYAN #input FG RESET " (" #anchor ")"
 
 
-// Time how long it takes to do `__xs` exactly `__n` times,
-// save the result (as seconds) into `__out`.
-#define MEASURE_LOOP(__out, __n, __xs) do { \
-    struct timespec __a, __b;               \
-    clock_gettime(CLOCK_MONOTONIC, &__a);   \
-                                            \
-    for (int __i = 0; __i < __n; __i++) {   \
-        __xs;                               \
-    }                                       \
-                                            \
-    clock_gettime(CLOCK_MONOTONIC, &__b);   \
-    time_t __s = __b.tv_sec  - __a.tv_sec;  \
-    long   __u = __b.tv_nsec - __a.tv_nsec; \
-    __out = __u * 1.0e-9 + __s;             \
-} while (0)
+template <typename T>
+bool match(const T &regexp, const re2::StringPiece& text, RE2::Anchor anchor,
+                                  re2::StringPiece* groups, int ngroups);
 
 
-#define GENERIC_TEST(name, regex, anchor, _input, ngroups, __xs, answer, ...)      \
-    test_case(name) {                                                              \
-        const char input[] = _input;                                               \
-        re2::StringPiece rjgroups[ngroups];                                        \
-        re2::StringPiece r2groups[ngroups] = { __VA_ARGS__ };                      \
-                                                                                   \
-        re2jit::it rj(regex);                                                      \
-        if (!rj.ok()) return Result::Fail("%s", rj.error().c_str());               \
-                                                                                   \
-        int rjmatch = rj.match(input, RE2::anchor, rjgroups, ngroups);             \
-        int r2match = answer;                                                      \
-        if (r2match != rjmatch) return Result::Fail("invalid answer %d", rjmatch); \
-        if (r2match) for (ssize_t i = 0; i < (ssize_t) ngroups; i++) {             \
-            const auto &g2 = r2groups[i];                                          \
-            const auto &gj = rjgroups[i];                                          \
-            if (g2 != gj) {                                                        \
-                return Result::Fail(                                               \
-                    "group %zu incorrect\n"                                        \
-                    "    expected [%d @ %p] '%.*s'\n"                              \
-                    "    matched  [%d @ %p] '%.*s'", i,                            \
-                    g2.size(), g2.data(), std::min(g2.size(), 50), g2.data(),      \
-                    gj.size(), gj.data(), std::min(gj.size(), 50), gj.data());     \
-            }                                                                      \
-        }                                                                          \
-                                                                                   \
-        __xs;                                                                      \
-        return Result::Pass("= %d", rjmatch);                                      \
+template <>
+bool match<RE2>(const RE2 &regexp, const re2::StringPiece& text, RE2::Anchor anchor,
+                                         re2::StringPiece* groups, int ngroups)
+{
+    return regexp.Match(text, 0, text.size(), anchor, groups, ngroups);
+}
+
+
+template <>
+bool match<re2jit::it>(const re2jit::it &regexp, const re2::StringPiece& text, RE2::Anchor anchor,
+                                                       re2::StringPiece* groups, int ngroups)
+{
+    return regexp.match(text, anchor, groups, ngroups);
+}
+
+
+Result compare(bool am, bool bm, re2::StringPiece *a, re2::StringPiece *b, ssize_t n)
+{
+    if (am != bm) return Result::Fail("invalid answer %d", am);
+    if (am) for (ssize_t i = 0; i < n; i++, a++, b++)
+        if (*a != *b)
+            return Result::Fail(
+                "group %zu incorrect\n"
+                "    expected [%d @ %p] '%.*s'\n"
+                "    matched  [%d @ %p] '%.*s'", i,
+                b->size(), b->data(), std::min(b->size(), 50), b->data(),
+                a->size(), a->data(), std::min(a->size(), 50), a->data());
+    return Result::Pass("= %d", am);
+}
+
+
+template <typename F> double measure(int k, const F&& fn)
+{
+    struct timespec start;
+    struct timespec end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    while (k--) fn();
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    auto s = end.tv_sec  - start.tv_sec;
+    auto n = end.tv_nsec - start.tv_nsec;
+    return n * 1e-9 + s;
+}
+
+
+#define GENERIC_TEST(name, regex, anchor, _input, ngroups, __fn, answer, ...) \
+    test_case(name) {                                                         \
+        re2::StringPiece input = _input;                                      \
+        re2::StringPiece rgroups[ngroups];                                    \
+        re2::StringPiece egroups[ngroups] = { __VA_ARGS__ };                  \
+        re2jit::it _r(regex);                                                 \
+        if (!_r.ok()) return Result::Fail("%s", _r.error().c_str());          \
+        auto fn = __fn;                                                       \
+        return fn(match(_r, input, RE2::anchor, rgroups, ngroups),            \
+                               answer, rgroups, egroups, ngroups);            \
     }
 
 
-#define FIXED_TEST(regex, anchor, input, answer, ...) \
-    GENERIC_TEST(FORMAT_NAME(regex, anchor, input), regex, anchor, input, (sizeof((const char*[]){__VA_ARGS__})/sizeof(char*)), {}, answer, __VA_ARGS__)
+#define FIXED_TEST(regex, anchor, input, answer, ...)                     \
+    GENERIC_TEST(FORMAT_NAME(regex, anchor, input), regex, anchor, input, \
+        (sizeof((const char*[]){__VA_ARGS__})/sizeof(char*)), compare, answer, __VA_ARGS__)
 
 
-#define GENERIC_RE2_TEST(name, regex, anchor, _input, ngroups, __xs) \
-    GENERIC_TEST(name, regex, anchor, _input, ngroups, __xs,         \
-        RE2(regex).Match(input, 0, sizeof(input) - 1, RE2::anchor, r2groups, ngroups))
+#define MATCH_TEST_NAMED(name, regex, anchor, _input, ngroups, __fn) \
+            GENERIC_TEST(name, regex, anchor, _input, ngroups, __fn, \
+                         match(RE2(regex), input, RE2::anchor, egroups, ngroups))
+
+
+#define MATCH_TEST(regex, anchor, input, n)           \
+        MATCH_TEST_NAMED(                             \
+                   FORMAT_NAME(regex, anchor, input), \
+                   regex, anchor, input, n, compare)
 
 
 #if RE2JIT_DO_PERF_TESTS
@@ -70,8 +94,7 @@
 #define GENERIC_PERF_TEST(name, __n, setup, body, teardown) \
     test_case(name) {                                       \
         setup                                               \
-        double __t;                                         \
-        MEASURE_LOOP(__t, __n, body);                       \
+        double __t = measure(__n, [&]() { body });          \
         teardown                                            \
         return Result::Pass("=> %f s", __t);                \
     }
@@ -83,30 +106,28 @@
 #endif
 
 
-#define MATCH_TEST(regex, anchor, input, n) \
-    GENERIC_RE2_TEST(FORMAT_NAME(regex, anchor, input), regex, anchor, input, n, {})
-
-
-#define PERF_TEST(name, n, regex, anchor, _input, ngroups) \
-    GENERIC_PERF_TEST(name " [re2]", n                     \
-      , RE2 r(regex);                                      \
-        re2::StringPiece m[ngroups];                       \
-        const char input[] = _input;                       \
-        const size_t size = sizeof(input) - 1;             \
-      , r.Match(input, 0, size, RE2::anchor, m, ngroups)   \
-      , {});                                               \
-                                                           \
-    GENERIC_PERF_TEST(name " [jit]", n                     \
-      , re2jit::it r(regex);                               \
-        re2::StringPiece m[ngroups];                       \
-      , r.match(_input, RE2::anchor, m, ngroups)           \
+#define PERF_TEST_NAMED(name, n, regex, anchor, _input, ngroups) \
+    GENERIC_PERF_TEST(name " [re2]", n                           \
+      , RE2 r(regex);                                            \
+        re2::StringPiece m[ngroups];                             \
+        re2::StringPiece i(_input, sizeof(_input) - 1);          \
+      , match(r, i, RE2::anchor, m, ngroups);                    \
+      , {});                                                     \
+                                                                 \
+    GENERIC_PERF_TEST(name " [jit]", n                           \
+      , re2jit::it r(regex);                                     \
+        re2::StringPiece m[ngroups];                             \
+        re2::StringPiece i(_input, sizeof(_input) - 1);          \
+      , match(r, i, RE2::anchor, m, ngroups);                    \
       , {})
 
 
-#define MATCH_PERF_TEST_NAMED(name, n, regex, anchor, input, ngroups) \
-    GENERIC_RE2_TEST(name, regex, anchor, input, ngroups, {}); \
-    PERF_TEST(name, n, regex, anchor, input, ngroups)
+#define MATCH_PERF_TEST_NAMED(name, n, regex, anchor, input, ngroups)   \
+             MATCH_TEST_NAMED(name,    regex, anchor, input, ngroups, compare); \
+              PERF_TEST_NAMED(name, n, regex, anchor, input, ngroups)
 
 
-#define MATCH_PERF_TEST(n, regex, anchor, input, ngroups) \
-    MATCH_PERF_TEST_NAMED(FORMAT_NAME(regex, anchor, input), n, regex, anchor, input, ngroups)
+#define MATCH_PERF_TEST(n, regex, anchor, input, ngroups)  \
+        MATCH_PERF_TEST_NAMED(                             \
+                        FORMAT_NAME(regex, anchor, input), \
+                        n, regex, anchor, input, ngroups)
