@@ -36,7 +36,6 @@ static const re2jit::it stage2_jit(stage2_re);
 
 
 template <typename T, int i> static const T& REGEXP();
-template <typename T, int i> static const T& REGEXP();
 template <> auto REGEXP<RE2, 1>()        -> decltype((stage1_re2)) { return stage1_re2; }
 template <> auto REGEXP<RE2, 2>()        -> decltype((stage2_re2)) { return stage2_re2; }
 template <> auto REGEXP<re2jit::it, 1>() -> decltype((stage1_jit)) { return stage1_jit; }
