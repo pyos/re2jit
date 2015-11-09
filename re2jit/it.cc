@@ -70,6 +70,7 @@ namespace re2jit
         delete _bytecode;
         delete _x_forward;
         delete _x_reverse;
+        delete _capturing_groups;
         if (_regexp)
             _regexp->Decref();
     }
@@ -147,17 +148,16 @@ namespace re2jit
 
     std::string it::lastgroup(const re2::StringPiece *match, int nmatch) const
     {
-        if (!ok()) {
+        if (!ok())
             return "";
-        }
 
-        const std::map<int, std::string> *names = _regexp->CaptureNames();
+        if (_capturing_groups == NULL)
+            _capturing_groups = _regexp->CaptureNames();
+
+        if (_capturing_groups == NULL)
+            return "";
+
         const char *end = NULL;
-
-        if (names == NULL) {
-            return "";
-        }
-
         int grp = 0;
 
         for (int i = 1; i < nmatch; i++) {  // 0 = whole match
@@ -168,15 +168,12 @@ namespace re2jit
             grp = i;
         }
 
-        const auto it = names->find(grp);
+        const auto it = _capturing_groups->find(grp);
 
-        if (it == names->cend()) {
-            delete names;
+        if (it == _capturing_groups->cend())
             return "";
-        }
 
         std::string n = it->second;
-        delete names;
         return n;
     }
 };

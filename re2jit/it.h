@@ -66,6 +66,7 @@ namespace re2jit
             std::string    _pattern2;
             std::string    _error;
             bool           _pure_re2;
+            mutable const std::map<int, std::string> *_capturing_groups = NULL;
     };
 };
 
