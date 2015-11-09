@@ -42,7 +42,8 @@ _require_test_run =     \
 	test/13-exponential \
 	test/20-submatching \
 	test/30-long        \
-	test/31-unicode
+	test/31-unicode     \
+	test/32-markdownish
 
 
 ARCHIVE = ar rcs
