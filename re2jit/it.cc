@@ -46,7 +46,7 @@ namespace re2jit
 
         _native = new native{_bytecode};
 
-        if (_native->entry == NULL) {
+        if (_native->entry == NULL || _native->state == NULL) {
             _error = "JIT compilation error";
             return;
         }
