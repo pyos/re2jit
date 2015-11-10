@@ -3,22 +3,20 @@
 #define STACK_SIZE 1024
 
 
-static thread_local re2jit::native *_this;
+static thread_local const re2jit::native *_this;
 struct re2jit::native
 {
-    void * entry;
-    void * state;
-    re2::Prog *_prog;
-    // In this backend, a state is a pointer to an instruction counter.
-    // Since we can't make a pointer to a stack-allocated object's field
-    // (as it's going to be destroyed soon), we'll preallocate an array
-    // of possible values and refer to these.
-    std::vector<int32_t> _numbers;
-    std::unordered_set<uint32_t> _backrefs;
+    const void * entry;
+    const void * state;  // pointer to a `_number`
+    re2::Prog  * _prog;
+    // some insts are stack-allocated -- can't save pointers to their `out()` field.
+    // instead, nfa state will point to elements of this vector.
+    std::vector       <int> _numbers;
+    std::unordered_set<int> _backrefs;
 
     native(re2::Prog *prog) : _prog(prog), _numbers(prog->size())
     {
-        for (ssize_t i = 0; i < prog->size(); i++) {
+        for (int i = 0; i < prog->size(); i++) {
             _numbers[i] = i;
 
             for (auto op : re2jit::is_extcode(prog, prog->inst(i)))
@@ -32,47 +30,42 @@ struct re2jit::native
 
     void init() const
     {
-        _this = const_cast<re2jit::native *>(this);
+        _this = this;
     }
 
-    static void step(struct rejit_threadset_t *nfa, void *inst)
+    static void step(struct rejit_threadset_t *nfa, const void *inst)
     {
+        int new_bitmaps = 0;
         struct rejit_thread_t *t = nfa->running;
+        // state >= 0 -- visit another state
+        // state <  0 -- restore a captuing group's boundary
+        struct _st { int state, index, refd; };
+        struct _st stack[STACK_SIZE];
+        struct _st *it = stack;
+        (it++)->state = *(const int *) inst;
 
-        union {
-            // state >= 0 -- visit another state
-            // state <  0 -- restore a captuing group's boundary
-            struct { int32_t state, _____; };
-            struct { int32_t group, index; };
-        } stack[STACK_SIZE];
-
-        stack[0].state = *(int32_t *) inst;
-
-        int32_t new_bitmaps = 0;
-        rejit_thread_bitmap_clear(nfa);
-
-        for (size_t stkid = 1; stkid;) {
-            int32_t i = stack[--stkid].state;
+        while (it != stack) {
+            int i = (--it)->state;
 
             if (i < 0) {
-                if (_this->_backrefs.find(-i / 2) != _this->_backrefs.end()) {
+                if (it->refd) {
                     rejit_thread_bitmap_restore(nfa);
                     new_bitmaps--;
                 }
 
-                t->groups[-i] = stack[stkid].index;
+                t->groups[-i] = it->index;
                 continue;
             }
 
-            if (nfa->visited[i / 8] & (1 << (i % 8)))
+            if (nfa->bitmap[i / 8] & (1 << (i % 8)))
                 continue;
 
-            nfa->visited[i / 8] |= 1 << (i % 8);
+            nfa->bitmap[i / 8] |= 1 << (i % 8);
 
             auto op  = _this->_prog->inst(i);
-            auto vec = re2jit::is_extcode(_this->_prog, op);
+            auto ext = re2jit::is_extcode(_this->_prog, op);
 
-            for (auto& op : vec) switch (op.opcode())
+            for (auto& op : ext) switch (op.opcode())
             {
                 case re2jit::inst::kUnicodeType: {
                     uint64_t x = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length);
@@ -91,18 +84,16 @@ struct re2jit::native
 
                 case re2jit::inst::kBackReference: {
                     if (op.arg() * 2 >= nfa->groups)
-                        // no idea what that group matched
                         break;
 
                     int start = t->groups[op.arg() * 2];
                     int end   = t->groups[op.arg() * 2 + 1];
 
                     if (start == -1 || end < start)
-                        // unmatched group.
                         break;
 
                     if (start == end) {
-                        stack[stkid++].state = op.out();
+                        (it++)->state = op.out();
                         break;
                     }
 
@@ -117,12 +108,12 @@ struct re2jit::native
                 }
             }
 
-            if (!vec.size()) switch (op->opcode())
+            if (!ext.size()) switch (op->opcode())
             {
                 case re2::kInstAltMatch:
                 case re2::kInstAlt:
-                    stack[stkid++].state = op->out1();
-                    stack[stkid++].state = op->out();
+                    (it++)->state = op->out1();
+                    (it++)->state = op->out();
                     break;
 
                 case re2::kInstByteRange: {
@@ -143,28 +134,30 @@ struct re2jit::native
 
                 case re2::kInstCapture:
                     if ((size_t) op->cap() < nfa->groups) {
-                        stack[stkid].group = -op->cap();
-                        stack[stkid].index = t->groups[op->cap()];
-                        stkid++;
+                        it->state = -op->cap();
+                        it->index = t->groups[op->cap()];
+                        it->refd  = _this->_backrefs.find(op->cap() / 2) != _this->_backrefs.end();
 
                         t->groups[op->cap()] = nfa->offset;
 
-                        if (_this->_backrefs.find(op->cap() / 2) != _this->_backrefs.end()) {
+                        if (it->refd) {
                             rejit_thread_bitmap_save(nfa);
                             new_bitmaps++;
                         }
+
+                        it++;
                     }
 
-                    stack[stkid++].state = op->out();
+                    (it++)->state = op->out();
                     break;
 
                 case re2::kInstEmptyWidth:
-                    if (!(op->empty() & ~(nfa->empty)))
-                        stack[stkid++].state = op->out();
+                    if (!(op->empty() & nfa->empty))
+                        (it++)->state = op->out();
                     break;
 
                 case re2::kInstNop:
-                    stack[stkid++].state = op->out();
+                    (it++)->state = op->out();
                     break;
 
                 case re2::kInstMatch:
@@ -174,8 +167,6 @@ struct re2jit::native
                         while (new_bitmaps--) rejit_thread_bitmap_restore(nfa);
                         return;
                     }
-
-                    break;
 
                 case re2::kInstFail:
                     break;

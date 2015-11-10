@@ -1,205 +1,172 @@
+#include <set>
 #include <vector>
-#include <unordered_set>
 #include <sys/mman.h>
 
 #include "asm.h"
 
 // `&NFA->input` -- like offsetof, but with 100% more undefined behavior.
-static const struct rejit_threadset_t *NFA    = NULL;
-static const struct rejit_thread_t    *THREAD = NULL;
+static constexpr const struct rejit_threadset_t *NFA    = NULL;
+static constexpr const struct rejit_thread_t    *THREAD = NULL;
 
 struct re2jit::native
 {
     void init() {}
-    void * entry = NULL;
-    void * state = NULL;
+    const void * entry = NULL;
+    const void * state = NULL;
     size_t _size = 0;
 
     native(re2::Prog *prog)
     {
-        size_t i;
         size_t n = prog->size();
+        // dead code elimination pass:
+        //   1. ignore all instructions with indegree = 0
+        //   2. do not emit bitmap checks for those with indegree = 1
+        //   3. find out changing which groups would require resetting the state bitmap
+        std::vector<unsigned> stack(n);
+        std::vector<unsigned> emitted(n);
+        std::vector<unsigned> indegree(n);
+        std::set   <unsigned> backrefs;
+        auto it = stack.begin();
+        #define VISIT(a, i) if (!a[i]++) *it++ = i
 
-        as::code code;
-        std::vector<as::label> labels(n);
+        VISIT(indegree, prog->start());
 
-        // How many transitions have the i-th opcode as a target.
-        // Opcodes with indegree 1 don't need to be tracked in the bit vector
-        // (as there is only one way to reach them and we've already checked that).
-        // Opcodes with indegree 0 are completely unreachable, no need to compile those.
-        std::vector< unsigned > indegree(n);
-        std::vector< unsigned > emitted(n);
-        // If the regexp contains backreferences, we have to fall back to sort-of
-        // backtracking. Well, *technically*, we can simply replace our bit vector
-        // of `m` visited states with a bit vector of `m * n ** (2 * k)` states
-        // where `k` is the number of (referenced) groups and `n` is the length of input.
-        // You thought the `m * n` bits required to make backtrackers run in linear time
-        // was a lot? Think again.
-        std::unordered_set< unsigned > backreferences;
+        while (it != stack.begin()) {
+            auto op  = prog->inst(*--it);
+            auto ext = re2jit::is_extcode(prog, op);
 
-        ssize_t *stack = new ssize_t[prog->size()];
-        ssize_t *stptr = stack;
-        indegree[*stptr++ = prog->start()]++;
+            for (auto& op : ext) switch (op.opcode()) {
+                case re2jit::inst::kBackReference:
+                    backrefs.insert(op.arg());
 
-        while (stptr != stack) {
-            auto op  = prog->inst(*--stptr);
-            auto vec = re2jit::is_extcode(prog, op);
-
-            for (auto& op : vec) {
-                if (op.opcode() == re2jit::inst::kBackReference)
-                    // Note that the fact that a regex with backreferences requires
-                    // at most O(m * n ** (2 * k + 1)) time to match does not prove
-                    // P = NP in any way. Reducing 3-SAT to PCRE matching is done
-                    // by constructing a regex in which m = k = O(n). O(n * n ** n)?
-                    // That's worse than brute-force.
-                    backreferences.insert(op.arg());
-
-                if (!indegree[op.out()]++)
-                    *stptr++ = op.out();
+                case re2jit::inst::kUnicodeType:
+                    VISIT(indegree, op.out());
             }
 
-            if (!vec.size())
-                switch (op->opcode()) {
-                    case re2::kInstAlt:
-                    case re2::kInstAltMatch:
-                        if (!indegree[op->out1()]++)
-                            *stptr++ = op->out1();
+            if (!ext.size()) switch (op->opcode()) {
+                case re2::kInstAlt:
+                case re2::kInstAltMatch:
+                    VISIT(indegree, op->out1());
 
-                    default:
-                        if (!indegree[op->out()]++)
-                            *stptr++ = op->out();
+                default:
+                    VISIT(indegree, op->out());
 
-                    case re2::kInstFail:
-                    case re2::kInstMatch:
-                        break;
+                case re2::kInstFail:
+                case re2::kInstMatch:
+                    break;
 
-                    case re2::kInstByteRange:
-                        if (!indegree[op->out()])
-                            *stptr++ = op->out();
-                        // subsequent byte ranges are concatenated into one block of code
-                        auto next = prog->inst(op->out());
-                        if (next->opcode() != re2::kInstByteRange && !re2jit::maybe_extcode(next))
-                            indegree[op->out()]++;
-                }
+                case re2::kInstByteRange:
+                    size_t i;
+
+                    do  // non-extcode byte ranges are concatenated into one block of code
+                        // => intermediate insts are unreachable by themselves
+                        op = prog->inst(i = op->out());
+                    while (op->opcode() == re2::kInstByteRange && !re2jit::maybe_extcode(op));
+
+                    VISIT(indegree, i);
+            }
         }
 
-        // NFA will call this code with itself (%rdi) and a state (%rsi).
-        // In our case, the state is a pointer to actual code to execute.
-        // Each thread has its own array of group indices...
-        if (backreferences.size())
-            // ...so it must have its own zero-filled bit vector of visited states.
-            code.push(as::rdi)
-                .push(as::rsi)
-                .call(&rejit_thread_bitmap_clear)
-                .pop (as::rsi)
-                .pop (as::rdi)
-                .jmp (as::rsi);
-        else
-            // ...but we don't care, so we can simply jump to actual code.
-            code.jmp(as::rsi);
+        as::code code;
+        as::label fail;
+        as::label succeed;
+        std::vector<as::label> labels(n);
+        // compiler pass:
+        //   1. 0(code) -- entry point; %rdi = struct rejit_threadset_t *nfa, %rsi = void *state
+        //   2. (state) -- some opcode; %rdi = struct rejit_threadset_t *nfa
+        code.jmp(as::rsi).mark(fail).xor_(as::eax, as::eax).mark(succeed).ret();
 
-        as::label fail;     // jump here to return 0
-        as::label succeed;  // jump here to return 1 (if a matching state is reachable)
-        code.mark(fail).xor_(as::eax, as::eax).mark(succeed).ret();
+        VISIT(emitted, prog->start());
 
-        emitted[*stptr++ = prog->start()]++;
+        while (it != stack.begin()) {
+            auto op  = prog->inst(*--it);
+            auto ext = re2jit::is_extcode(prog, op);
 
-        while (stptr != stack) {
-            #define EMIT_NEXT(i) if (!emitted[i]++) *stptr++ = i
-            #define EMIT_JUMP(i) EMIT_NEXT(i); else code.jmp(labels[i])
-
-            code.mark(labels[i = *--stptr]);
-            // Each opcode should conform to the System V ABI calling convention.
-            //   argument 1: %rdi = struct rejit_threadset_t *nfa
-            //   return reg: %rax = 1 iff found a match somewhere
-            auto op  = prog->inst(i);
-            auto vec = re2jit::is_extcode(prog, op);
+            code.mark(labels[*it]);
 
             // kInstFail will do `ret` anyway.
-            if (op->opcode() != re2::kInstFail && indegree[i] > 1)
-                // if (bit(nfa->visited, i) == 1) return; bit(nfa->visited, i) = 1;
-                code.mov  (as::mem(as::rdi + &NFA->visited), as::rsi)
-                    .test (as::i8(1 << (i % 8)), as::mem(as::rsi + i / 8)).jmp(fail, as::not_zero)
-                    .or_  (as::i8(1 << (i % 8)), as::mem(as::rsi + i / 8));
+            if (op->opcode() != re2::kInstFail && indegree[*it] > 1)
+                // if (bit(nfa->bitmap, *it) == 1) return; bit(nfa->bitmap, *it) = 1;
+                code.mov  (as::mem(as::rdi + &NFA->bitmap), as::rsi)
+                    .test (as::i8(1 << (*it % 8)), as::mem(as::rsi + *it / 8)).jmp(fail, as::not_zero)
+                    .or_  (as::i8(1 << (*it % 8)), as::mem(as::rsi + *it / 8));
 
-            if (vec.size()) {
-                for (auto &op : vec) {
-                    // Instead of returning, a failed pseudo-inst should jump
-                    // to the next inst in the alternation.
-                    as::label fail;
+            for (auto &op : ext) {
+                // a match at any opcode in `ext` is ok, so instead of straight up
+                // failing, jump to the next one.
+                as::label fail;
 
-                    switch (op.opcode()) {
-                        case re2jit::inst::kUnicodeType:
-                            // utf8_chr = rejit_read_utf8(nfa->input, nfa->length);
-                            code.push (as::rdi)
-                                .mov  (as::mem(as::rdi + &NFA->length), as::rsi)
-                                .mov  (as::mem(as::rdi + &NFA->input),  as::rdi)
-                                .call (&rejit_read_utf8)
-                                .pop  (as::rdi)
-                            // if ((utf8_length = utf8_chr >> 32) == 0) return;
-                                .mov  (as::rax, as::rdx)
-                                .shr  (32,      as::rdx).jmp(fail, as::zero)
-                            // if ((rejit_unicode_category(utf8_chr) & UNICODE_CATEGORY_GENERAL) != arg) return;
-                                .push (as::rdi)
-                                .push (as::rdx)
-                                .mov  (as::eax, as::edi)
-                                .call (&rejit_unicode_category)  // inlining is hard.
-                                .pop  (as::rdx)
-                                .pop  (as::rdi)
-                                .and_ (UNICODE_CATEGORY_GENERAL, as::al)
-                                .cmp  (op.arg(), as::al).jmp(fail, as::not_equal)
-                            // rejit_thread_wait(nfa, &out, utf8_length);
-                                .mov  (labels[op.out()], as::rsi)
-                                .push (as::rdi)
-                                .call (&rejit_thread_wait)
-                                .pop  (as::rdi);
-                            EMIT_NEXT(op.out());
-                            break;
+                switch (op.opcode()) {
+                    case re2jit::inst::kUnicodeType:
+                        // chr = rejit_read_utf8(nfa->input, nfa->length);
+                        code.push (as::rdi)
+                            .mov  (as::mem(as::rdi + &NFA->length), as::rsi)
+                            .mov  (as::mem(as::rdi + &NFA->input),  as::rdi)
+                            .call (&rejit_read_utf8)
+                            .pop  (as::rdi)
+                        // if ((len = chr >> 32) == 0) return;
+                            .mov  (as::rax, as::rdx)
+                            .shr  (32,      as::rdx).jmp(fail, as::zero)
+                        // if ((rejit_unicode_category(chr) & UNICODE_CATEGORY_GENERAL) != arg) return;
+                            .push (as::rdi)
+                            .push (as::rdx)
+                            .mov  (as::eax, as::edi)
+                            .call (&rejit_unicode_category)  // inlining is hard.
+                            .pop  (as::rdx)
+                            .pop  (as::rdi)
+                            .and_ (UNICODE_CATEGORY_GENERAL, as::al)
+                            .cmp  (op.arg(), as::al).jmp(fail, as::not_equal)
+                        // rejit_thread_wait(nfa, &out, len);
+                            .mov  (labels[op.out()], as::rsi)
+                            .push (as::rdi)
+                            .call (&rejit_thread_wait)
+                            .pop  (as::rdi)
+                            .jmp  (fail);
+                        VISIT(emitted, op.out());
+                        break;
 
-                        case re2jit::inst::kBackReference: {
-                            as::label empty;
+                    case re2jit::inst::kBackReference: {
+                        as::label empty;
 
-                            // if (nfa->groups <= arg * 2) return;
-                            code.cmp(as::i32(op.arg() * 2), as::mem(as::rdi + &NFA->groups))
-                                .jmp(fail, as::less_equal_u)  // wasn't enough space to record that group
-                            // if (start == -1 || end < start) return;
-                                .mov(as::mem(as::rdi + &NFA->running), as::rsi)
-                                .mov(as::mem(as::rsi + &THREAD->groups[op.arg() * 2 + 1]), as::ecx)
-                                .mov(as::mem(as::rsi + &THREAD->groups[op.arg() * 2]),     as::esi)
-                                .cmp(as::i8(-1), as::esi).jmp(fail, as::equal)
-                                .sub(as::esi,    as::ecx).jmp(fail, as::less)
-                            // if (start == end) goto empty;
-                                .jmp(empty, as::equal)
-                            // if (nfa->length < end - start) return;
-                                .cmp(as::rcx, as::mem(as::rdi + &NFA->length)).jmp(fail, as::less_u)
-                            // if (memcmp(nfa->input, nfa->input + start - nfa->offset, end - start)) return;
-                                .push(as::rdi)
-                                .sub (as::mem(as::rdi + &NFA->offset), as::rsi)
-                                .mov (as::mem(as::rdi + &NFA->input),  as::rdi)
-                                .mov (as::ecx, as::edx)
-                                .add (as::rdi, as::rsi)
-                                .repz().cmpsb().pop(as::rdi).jmp(fail, as::not_equal)
-                            // return rejit_thread_wait(nfa, &out, end - start);
-                                .mov (labels[op.out()], as::rsi)
-                                .push(as::rdi)
-                                .call(&rejit_thread_wait)
-                                .pop (as::rdi)
-                                .jmp (fail)
-                            // empty: eax = out(nfa);
-                                .mark(empty)
-                                .push(as::rdi)
-                                .call(labels[op.out()])
-                                .pop (as::rdi);
-                            EMIT_NEXT(op.out());
-                            break;
-                        }
+                        // if (nfa->groups <= arg * 2) return;
+                        code.cmp(as::i32(op.arg() * 2), as::mem(as::rdi + &NFA->groups))
+                            .jmp(fail, as::less_equal_u)
+                        // if (start < 0 || end < start) return; if (end == start) goto empty;
+                            .mov (as::mem(as::rdi + &NFA->running), as::rsi)
+                            .mov (as::mem(as::rsi + &THREAD->groups[op.arg() * 2 + 1]), as::ecx)
+                            .mov (as::mem(as::rsi + &THREAD->groups[op.arg() * 2]),     as::esi)
+                            .test(as::esi, as::esi).jmp(fail, as::negative)
+                            .sub (as::esi, as::ecx).jmp(fail, as::less)
+                            .jmp (empty, as::equal)
+                        // if (nfa->length < end - start) return;
+                            .cmp(as::rcx, as::mem(as::rdi + &NFA->length)).jmp(fail, as::less_u)
+                        // if (memcmp(nfa->input, nfa->input + start - nfa->offset, end - start)) return;
+                            .push(as::rdi)
+                            .sub (as::mem(as::rdi + &NFA->offset), as::rsi)
+                            .mov (as::mem(as::rdi + &NFA->input),  as::rdi)
+                            .add (as::rdi, as::rsi)
+                            .mov (as::ecx, as::edx)
+                            .repz().cmpsb().pop(as::rdi).jmp(fail, as::not_equal)
+                        // return rejit_thread_wait(nfa, &out, end - start);
+                            .mov (labels[op.out()], as::rsi)
+                            .push(as::rdi)
+                            .call(&rejit_thread_wait)
+                            .pop (as::rdi)
+                            .jmp (fail)
+                        // empty: eax = out(nfa);
+                            .mark(empty)
+                            .push(as::rdi)
+                            .call(labels[op.out()])
+                            .pop (as::rdi);
+                        VISIT(emitted, op.out());
+                        break;
                     }
-
-                    code.test(as::eax, as::eax).jmp(succeed, as::not_zero).mark(fail);
                 }
 
-                code.jmp(fail);
-            } else switch (op->opcode()) {
+                code.test(as::eax, as::eax).jmp(succeed, as::not_zero).mark(fail);
+            }
+
+            if (ext.size()) code.jmp(fail); else switch (op->opcode()) {
                 case re2::kInstAltMatch:
                 case re2::kInstAlt:
                     // if (out(nfa)) return 1;
@@ -207,29 +174,30 @@ struct re2jit::native
                         .call  (labels[op->out()])
                         .pop   (as::rdi)
                         .test  (as::eax, as::eax).jmp(succeed, as::not_zero);
-
-                    EMIT_NEXT(op->out());
-                    EMIT_JUMP(op->out1());
+                    VISIT(emitted, op->out());
+                    VISIT(emitted, op->out1()); else code.jmp(labels[op->out1()]);
                     break;
 
                 case re2::kInstByteRange: {
-                    std::vector<re2::Prog::Inst *> seq{ op };
+                    auto i = 0, len = 0, r = 0;
+                    auto end = op;
 
-                    while ((op = prog->inst(op->out()))->opcode() == re2::kInstByteRange && !re2jit::maybe_extcode(op))
-                        seq.push_back(op);
+                    do
+                        len++, end = prog->inst(r = end->out());
+                    while (end->opcode() == re2::kInstByteRange && !re2jit::maybe_extcode(end));
 
                     // if (nfa->length < len) return; else rsi = nfa->input;
-                    code.cmp(as::i32(seq.size()), as::mem(as::rdi + &NFA->length)).jmp(fail, as::less_u)
+                    code.cmp(as::i32(len), as::mem(as::rdi + &NFA->length)).jmp(fail, as::less_u)
                         .mov(as::mem(as::rdi + &NFA->input), as::rsi);
 
-                    for (auto op : seq) {
-                        code.mov(as::mem(as::rsi), as::al)
-                            .add(as::i8(1), as::rsi);
+                    do {
+                        // al = rsi[i];
+                        code.mov(as::mem(as::rsi + i++), as::al);
 
                         if (op->foldcase())
                             // if ('A' <= al && al <= 'Z') al = al - 'A' + 'a';
-                            code.mov(as::rax - 'A', as::ecx)
-                                .mov(as::rcx + 'a', as::edx)
+                            code.mov(as::rax - 'A' + 'a', as::edx)
+                                .mov(as::rax - 'A',       as::ecx)
                                 .cmp('Z' - 'A', as::cl)
                                 .mov(as::edx, as::eax, as::less_equal_u);
 
@@ -240,13 +208,15 @@ struct re2jit::native
                             // if (al < lo || hi < al) return;
                             code.sub(op->lo(),            as::al)
                                 .cmp(op->hi() - op->lo(), as::al).jmp(fail, as::more_u);
-                    }
+
+                        op = prog->inst(op->out());
+                    } while (op != end);
 
                     // return rejit_thread_wait(nfa, &out, len);
-                    code.mov(labels[seq.back()->out()], as::rsi)
-                        .mov(seq.size(), as::edx)
+                    code.mov(labels[r], as::rsi)
+                        .mov(len,       as::edx)
                         .jmp(&rejit_thread_wait);
-                    EMIT_NEXT(seq.back()->out());
+                    VISIT(emitted, r);
                     break;
                 }
 
@@ -261,7 +231,7 @@ struct re2jit::native
                         .push (as::rcx)
                         .mov  (as::eax, as::mem(as::rcx + &THREAD->groups[op->cap()]));
 
-                    if (backreferences.find(op->cap() / 2) != backreferences.end())
+                    if (backrefs.find(op->cap() / 2) != backrefs.end())
                         // rejit_thread_bitmap_save(nfa); eax = out(nfa);
                         // rejit_thread_bitmap_restore(nfa);
                         code.push (as::rdi).call(&rejit_thread_bitmap_save)    .pop(as::rdi)
@@ -274,24 +244,22 @@ struct re2jit::native
                     // pop(nfa->running->groups[cap]); return eax;
                     code.pop(as::rcx)
                         .pop(as::mem(as::rcx + &THREAD->groups[op->cap()]))
-                        .ret();
-                    EMIT_NEXT(op->out());
+                        .jmp(succeed);
+                    VISIT(emitted, op->out());
                     break;
 
                 case re2::kInstEmptyWidth:
-                    // if (~nfa->empty & empty) return;
-                    code.mov  (as::mem(as::rdi + &NFA->empty), as::eax)
-                        .not_ (as::eax)
-                        .test (op->empty(), as::eax).jmp(fail, as::not_zero);
-                    EMIT_JUMP(op->out());
+                    // if (nfa->empty & empty) return;
+                    code.test(as::i8(op->empty()), as::mem(as::rdi + &NFA->empty))
+                        .jmp (fail, as::not_zero);
+                    VISIT(emitted, op->out()); else code.jmp(labels[op->out()]);
                     break;
 
                 case re2::kInstNop:
-                    EMIT_JUMP(op->out());
+                    VISIT(emitted, op->out()); else code.jmp(labels[op->out()]);
                     break;
 
                 case re2::kInstMatch:
-                    // return rejit_thread_match(nfa);
                     code.jmp(&rejit_thread_match);
                     break;
 
@@ -301,26 +269,24 @@ struct re2jit::native
             }
         }
 
-        delete[] stack;
+        #undef VISIT
 
-        void *target = mmap(NULL, code.size(), PROT_READ | PROT_WRITE,
-                                               MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        void *m = mmap(NULL, code.size(), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-        if (target == (void *) -1)
+        if (m == (void *) -1)
             return;
 
-        if (!code.write(target) || mprotect(target, code.size(), PROT_READ | PROT_EXEC) == -1) {
-            munmap(target, code.size());
-            return;
-        }
-
-        entry = target;
-        state = labels[prog->start()]->deref(target);
+        entry = m;
         _size = code.size();
+
+        if (!code.write(m) || mprotect(m, _size, PROT_READ | PROT_EXEC) == -1)
+            return;
+
+        state = labels[prog->start()](m);
     }
 
    ~native()
     {
-        munmap(entry, _size);
+        munmap((void *) entry, _size);
     }
 };

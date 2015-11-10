@@ -33,7 +33,7 @@ extern "C" {
     #endif
 
 
-    enum RE2JIT_THREAD_ANCHOR {
+    enum RE2JIT_ANCHOR_FLAGS {
         /* If start point is unanchored, we want to create a copy of the initial thread
          * each time we advance the input, giving it the lowest priority.
          * That way if none of the threads started at earlier positions match,
@@ -65,7 +65,7 @@ extern "C" {
      * a "state" is is backend-defined -- the pointer passed to this function
      * is whatever `thread_wait` was called with, no modifications applied.
      * For example, it may be a pointer to an instruction counter. */
-    typedef void (*rejit_entry_t)(struct rejit_threadset_t *, void *);
+    typedef void (*rejit_entry_t)(struct rejit_threadset_t *, const void *);
 
 
     struct rejit_thread_t
@@ -82,9 +82,13 @@ extern "C" {
          * we'll have to do some pointer arithmetic. */
         #define RE2JIT_DEREF_THREAD(ref) ((struct rejit_thread_t *)(((char *)(ref)) - offsetof(struct rejit_thread_t, category)))
         /* Pointer to something describing the thread's current state. */
-        void *state;
+        const void *state;
         /* If non-zero, decrement and move to the next queue instead of running. */
         size_t wait;
+        /* Unique identifier of the state bitmap used by this thread.
+         * Threads with identical bitmap ids are guaranteed to have matched
+         * all backreferenced groups at the same locations. */
+        unsigned bitmap_id;
         /* VLA mapping of group indices to indices into the input string.
          * Subgroup N matched the substring indexed by [groups[2N]:groups[2N+1]).
          * Subgroup 0 is special -- it is the whole match. Unmatched subgroups
@@ -99,20 +103,22 @@ extern "C" {
         size_t offset;
         size_t length;
         size_t states;
-        unsigned int active_queue;
-        unsigned int /* enum RE2JIT_THREAD_ANCHOR */ flags;
-        unsigned int /* enum RE2JIT_EMPTY_FLAGS   */ empty;
+        unsigned int queue;
+        /* Anchoring mode; enum RE2JIT_ANCHOR_FLAGS. */
+        unsigned int flags;
+        /* State flags for zero-width checks; enum RE2JIT_EMPTY_FLAGS.
+         * Inverted, so `empty & expected` is zero if every expected flag is set. */
+        unsigned int empty;
         /* Actual length of `thread_t.groups`. Must be at least 2 to store
-         * the location of the whole match, + 2 for each subgroup if needed. */
+         * the location of the whole match, + 2 per subgroup needed. */
         unsigned int groups;
-        /* A vector of bits, one for each state, marking whether that state was already
-         * visited while handling this input character. Used to avoid infinite
-         * loops consisting purely of empty transitions. */
-        uint8_t *visited;
-        /* Initial state of the automaton. */
-        void *initial;
+        /* A bitmap that may be used to mark visited states. It is reset
+         * automatically every time the input pointer advances. */
+        uint8_t *bitmap;
+        /* The state to spawn the initial thread with. */
+        const void *initial;
         /* Function to call to compute the epsilon closure of a single state. */
-        void (*entry)(struct rejit_threadset_t *, void *);
+        void (*entry)(struct rejit_threadset_t *, const void *);
         /* Currently active thread, set by `thread_dispatch`. */
         struct rejit_thread_t *running;
         /* Last (so far) thread forked off the currently running one. Threads are created
@@ -124,60 +130,51 @@ extern "C" {
          * There is no match iff this becomes empty at some point, and there is a match
          * iff there is exactly one thread, and it is not in any of the queues. */
         RE2JIT_LIST_ROOT(struct rejit_thread_t) all_threads;
-        /* Ring buffer of thread queues. The threads in the active queue are ready to
-         * run; the rest are waiting for the input pointer to advance. When the active
-         * queue becomes empty (due to all threads in it failing, matching, or reading
-         * an input byte and moving themselves to a different queue), the input string
-         * is advanced one byte and the queue buffer is rotated one position.
-         * Use RE2JIT_DEREF_THREAD on objects from these lists to get valid pointers. */
+        /* Threads in queue with index `queue` are currently active; threads
+         * in the other queue are waiting for them to read a single byte. */
         RE2JIT_LIST_ROOT(struct rejit_thread_t) queues[2];
-        /* Current "version" of the bit vector. It is only necessary to clear it
-         * when switching threads only if the version has changed since the last time.
-         * Different "versions" correspond to different contents of `thread->groups`;
-         * this is used  to optimize backreferences (which force the engine to repeat
-         * same states multiple times). */
-        int bitmap_version;
-        int bitmap_version_last;
+        /* ID of the bitmap currently in use. If a thread with a different ID becomes
+         * active, the whole bitmap should be reset, else we may never enter some
+         * valid states. */
+        unsigned bitmap_id;
+        /* Last assigned bitmap ID. A new ID is assigned whenever a thread
+         * requests a new bitmap because one of the backreferenced groups
+         * has changed its position. Unlike `bitmap_id`, this value is not restored
+         * after that thread terminates and releases the bitmap. */
+        unsigned bitmap_id_last;
     };
 
 
-    /* Finish initialization of an NFA. Input, its length, optional flags, number of
-     * capturing parentheses, and the initial entry point should be populated
-     * prior to calling this. Returns 0 on failure. */
-    int rejit_thread_init(struct rejit_threadset_t *);
-
-    /* Deallocate all threads. */
+    /* Finish initialization of an NFA. Input, its length, the number of capturing
+     * parentheses and states, as well as the initial state and the entry point
+     * should all be set prior to calling this. Returns 0 on failure. */
+    int  rejit_thread_init(struct rejit_threadset_t *);
     void rejit_thread_free(struct rejit_threadset_t *);
 
-    /* While there's a thread on the active queue, pop it off and jump to its entry
-     * point. If at some point no thread is active, advance the input one byte
-     * forward and rotate the queue ring. When the end of the input is reached
-     * and no more threads are active, return 0. In VM mode, return 1 instead of
-     * jumping to the entry point. */
+    /* Run all threads on the active queue, switch to the other one, repeat
+     * until either both queues are empty or there is no input to consume. */
     int rejit_thread_dispatch(struct rejit_threadset_t *);
 
     /* Claim that the currently running thread has matched the input string.
-     * Returns 0 if it has actually failed, 1 otherwise. */
+     * Return 0 if it has actually failed due to anchoring, 1 otherwise. */
     int rejit_thread_match(struct rejit_threadset_t *);
 
-    /* Fork a new thread off the currently running one and make it wait for N more bytes.
-     * Always returns 0. */
-    int rejit_thread_wait(struct rejit_threadset_t *, void *, size_t);
+    /* Create a copy of the current thread and place it onto the waiting queue
+     * until N more bytes of input are consumed. Always returns 0. */
+    int rejit_thread_wait(struct rejit_threadset_t *, const void *, size_t);
 
-    /* Check whether any thread has matched the string, return 1 for a match
-     * and 0 otherwise. If a match exists, the thread's array of subgroup locations
-     * is returned as an out-parameter. If the NFA has not finished yet (i.e.
-     * `rejit_thread_dispatch` did not return 0), behavior is undefined. */
+    /* If there is a thread in a matched state, return 1 and a pointer
+     * to its array of subgroup boundaries. Otherwise, return 0. If dispatch
+     * has not terminated yet, behavior is undefined. */
     int rejit_thread_result(struct rejit_threadset_t *, int **);
 
-    /* Replace `nfa->visited` with an empty bit vector, but save the old one for later. */
+    /* Save the current state bitmap and create a new, zero-filled one
+     * because there was some change in state that is impossible to record.
+     * (thus revisiting states we've already seen may be worthwhile.) */
     int rejit_thread_bitmap_save(struct rejit_threadset_t *);
 
-    /* Restore a previous value of `nfa->visited`. */
+    /* Restore a previously saved bitmap because we've reverted to the previous state. */
     void rejit_thread_bitmap_restore(struct rejit_threadset_t *);
-
-    /* Fill the current `nfa->visited` with zeroes. */
-    void rejit_thread_bitmap_clear(struct rejit_threadset_t *);
 
 #ifdef __cplusplus
 };
