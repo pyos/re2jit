@@ -133,7 +133,7 @@ struct re2jit::native
                 }
 
                 case re2::kInstCapture:
-                    if ((size_t) op->cap() < nfa->groups) {
+                    if ((size_t) op->cap() < nfa->groups && (size_t) t->groups[op->cap()] != nfa->offset) {
                         it->state = -op->cap();
                         it->index = t->groups[op->cap()];
                         it->refd  = _this->_backrefs.find(op->cap() / 2) != _this->_backrefs.end();

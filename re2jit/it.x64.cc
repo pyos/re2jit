@@ -224,27 +224,28 @@ struct re2jit::native
                     // if (nfa->groups <= cap) goto out;
                     code.cmp  (as::i32(op->cap()), as::mem(as::rdi + &NFA->groups))
                         .jmp  (labels[op->out()], as::less_equal_u)
-                    // push(nfa->running->groups[cap]); nfa->running->groups[cap] = nfa->offset;
+                    // if ((edx = nfa->running->groups[cap]) == nfa->offset) goto out;
                         .mov  (as::mem(as::rdi + &NFA->running), as::rcx)
                         .mov  (as::mem(as::rdi + &NFA->offset),  as::eax)
-                        .push (as::mem(as::rcx + &THREAD->groups[op->cap()]))
+                        .mov  (as::mem(as::rcx + &THREAD->groups[op->cap()]), as::edx)
+                        .cmp  (as::eax, as::edx).jmp(labels[op->out()], as::equal)
+                    // nfa->running->groups[cap] = nfa->offset;
+                        .push (as::rdx)
                         .push (as::rcx)
                         .mov  (as::eax, as::mem(as::rcx + &THREAD->groups[op->cap()]));
 
                     if (backrefs.find(op->cap() / 2) != backrefs.end())
-                        // rejit_thread_bitmap_save(nfa); eax = out(nfa);
-                        // rejit_thread_bitmap_restore(nfa);
-                        code.push (as::rdi).call(&rejit_thread_bitmap_save)    .pop(as::rdi)
-                            .push (as::rdi).call(labels[op->out()])            .pop(as::rdi)
-                            .push (as::rax).call(&rejit_thread_bitmap_restore) .pop(as::rax);
+                        code.push(as::rdi).call(&rejit_thread_bitmap_save)   .pop(as::rdi)
+                            .push(as::rdi).call(labels[op->out()])           .pop(as::rdi)
+                            .push(as::rax).call(&rejit_thread_bitmap_restore).pop(as::rax);
                     else
-                        // eax = out(nfa);
                         code.call(labels[op->out()]);
 
-                    // pop(nfa->running->groups[cap]); return eax;
+                    // nfa->running->groups[cap] = edx; return eax;
                     code.pop(as::rcx)
-                        .pop(as::mem(as::rcx + &THREAD->groups[op->cap()]))
-                        .jmp(succeed);
+                        .pop(as::rdx)
+                        .mov(as::edx, as::mem(as::rcx + &THREAD->groups[op->cap()]))
+                        .ret();
                     VISIT(emitted, op->out());
                     break;
 
