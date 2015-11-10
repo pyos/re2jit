@@ -2,20 +2,20 @@
 #include <unordered_set>
 #include <sys/mman.h>
 
-#include "it.x64.asm.h"
+#include "asm.h"
 
-
-static const struct rejit_threadset_t *NFA    = NULL;  // used for offset calculation
+// `&NFA->input` -- like offsetof, but with 100% more undefined behavior.
+static const struct rejit_threadset_t *NFA    = NULL;
 static const struct rejit_thread_t    *THREAD = NULL;
 
 struct re2jit::native
 {
     void init() {}
-    void * entry;
-    void * state;
-    size_t _size;
+    void * entry = NULL;
+    void * state = NULL;
+    size_t _size = 0;
 
-    native(re2::Prog *prog) : entry(NULL), state(NULL), _size(0)
+    native(re2::Prog *prog)
     {
         size_t i;
         size_t n = prog->size();

@@ -33,6 +33,7 @@ _require_objects = \
 
 
 _require_platform_code = \
+	re2jit/asm.h \
 	re2jit/it.x64.cc \
 	re2jit/it.vm.cc
 
