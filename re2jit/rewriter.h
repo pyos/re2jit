@@ -78,8 +78,8 @@ namespace re2jit
                     auto lp = regexp.find('{', i);
                     auto rp = regexp.find('}', i);
 
-                    if (lp == std::string::npos || rp == std::string::npos)
-                        return false;  // invalid syntax: unicode class with no name
+                    if (lp != i + 2 || rp == std::string::npos)
+                        goto unrecognized;  // invalid syntax: unicode class with no name
 
                     const uint8_t *id = rejit_unicode_category_id(&regexp[lp + 1], rp - lp - 1);
 
@@ -94,7 +94,7 @@ namespace re2jit
                     i = _rewrite_step(regexp, i, e - &regexp[0], inst::kBackReference, r);
                     // re2 does not support backreferences.
                     is_re2 = false;
-                }
+                } else unrecognized: i++;
             }
 
         return is_re2;
