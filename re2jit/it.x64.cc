@@ -254,13 +254,12 @@ struct re2jit::native
                     // if (nfa->groups <= cap) goto out;
                     code.cmp  (as::i32(op->cap()), as::mem(as::rdi + &NFA->groups))
                         .jmp  (labels[op->out()], as::less_equal_u)
-                    // esi = nfa->running->groups[cap]; nfa->running->groups[cap] = nfa->offset;
+                    // push(nfa->running->groups[cap]); nfa->running->groups[cap] = nfa->offset;
                         .mov  (as::mem(as::rdi + &NFA->running), as::rcx)
                         .mov  (as::mem(as::rdi + &NFA->offset),  as::eax)
-                        .mov  (as::mem(as::rcx + &THREAD->groups[op->cap()]), as::esi)
-                        .mov  (as::eax, as::mem(as::rcx + &THREAD->groups[op->cap()]))
-                        .push (as::rsi)
-                        .push (as::rcx);
+                        .push (as::mem(as::rcx + &THREAD->groups[op->cap()]))
+                        .push (as::rcx)
+                        .mov  (as::eax, as::mem(as::rcx + &THREAD->groups[op->cap()]));
 
                     if (backreferences.find(op->cap() / 2) != backreferences.end())
                         // rejit_thread_bitmap_save(nfa); eax = out(nfa);
@@ -272,10 +271,9 @@ struct re2jit::native
                         // eax = out(nfa);
                         code.call(labels[op->out()]);
 
+                    // pop(nfa->running->groups[cap]); return eax;
                     code.pop(as::rcx)
-                        .pop(as::rsi)
-                    // nfa->running->groups[cap] = esi; return eax;
-                        .mov(as::esi, as::mem(as::rcx + &THREAD->groups[op->cap()]))
+                        .pop(as::mem(as::rcx + &THREAD->groups[op->cap()]))
                         .ret();
                     EMIT_NEXT(op->out());
                     break;
