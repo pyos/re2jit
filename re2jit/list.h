@@ -33,7 +33,6 @@ extern "C" {
 
     #define rejit_list_end(x)  (void *) (x)->__list_handle
     #define rejit_list_init(x)       __rejit_list_init((x)->__list_handle)
-    #define rejit_list_prepend(x, y) __rejit_list_prepend((x)->__list_handle, (y)->__list_handle)
     #define rejit_list_append(x, y)  __rejit_list_append((x)->__list_handle, (y)->__list_handle)
     #define rejit_list_remove(x)     __rejit_list_remove((x)->__list_handle)
 
@@ -42,14 +41,6 @@ extern "C" {
     {
         node->next = node;
         node->prev = node;
-    }
-
-
-    static inline void __rejit_list_prepend(rejit_list_link_t *node, rejit_list_link_t *next)
-    {
-        next->next = node->next;
-        next->prev = node;
-        node->next = next->next->prev = next;
     }
 
 
@@ -66,7 +57,6 @@ extern "C" {
     {
         node->next->prev = node->prev;
         node->prev->next = node->next;
-        __rejit_list_init(node);
     }
 
 #ifdef __cplusplus

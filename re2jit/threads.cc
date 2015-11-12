@@ -14,24 +14,20 @@ static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
         return t;
     }
 
-    t = (struct rejit_thread_t *) malloc(sizeof(struct rejit_thread_t)
-                                       + sizeof(int) * r->groups);
-
-    RE2JIT_NULL_CHECK(t) return NULL;
-    rejit_list_init(&t->category);
-    rejit_list_init(t);
-    return t;
+    return (struct rejit_thread_t *) malloc(sizeof(struct rejit_thread_t)
+                                          + sizeof(int) * r->groups);
 }
 
 
 static struct rejit_thread_t *rejit_thread_fork(struct rejit_threadset_t *r)
 {
     struct rejit_thread_t *t = rejit_thread_acquire(r);
+    struct rejit_thread_t *c = r->running;
 
     RE2JIT_NULL_CHECK(t) return NULL;
-    t->bitmap_id = r->running->bitmap_id;
-    memcpy(t->groups, r->running->groups, sizeof(int) * r->groups);
     rejit_list_append(r->forked, t);
+    memcpy(t->groups, c->groups, sizeof(int) * r->groups);
+    t->bitmap_id = c->bitmap_id;
     return r->forked = t;
 }
 
@@ -169,6 +165,7 @@ int rejit_thread_match(struct rejit_threadset_t *r)
 
     struct rejit_thread_t *t = rejit_thread_fork(r);
     RE2JIT_NULL_CHECK(t) return 0;
+    rejit_list_init(&t->category);
     t->groups[1] = r->offset;
 
     while (t->next != rejit_list_end(&r->all_threads)) {
