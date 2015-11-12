@@ -125,21 +125,17 @@ namespace re2jit
         nfa.flags   = flags;
         _native->init();
 
-        if (!rejit_thread_init(&nfa))
-            return 0;
-
-        rejit_thread_dispatch(&nfa);
-
         int *gs, r;
+        rejit_thread_init(&nfa);
+        r = rejit_thread_dispatch(&nfa, &gs);
 
-        if ((r = rejit_thread_result(&nfa, &gs))) {
+        if (r == 1)
             for (int i = 0; i < nmatch; i++, gs += 2) {
                 if (gs[0] == -1 || gs[1] == -1)
                     match[i].set((const char *) NULL, 0);
                 else
                     match[i].set(text.data() + gs[0], gs[1] - gs[0]);
             }
-        }
 
         rejit_thread_free(&nfa);
         return r;

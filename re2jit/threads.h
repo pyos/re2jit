@@ -25,13 +25,6 @@ extern "C" {
 
     #include "list.h"
 
-    // It's easier to crash than to handle out-of-memory errors.
-    #ifdef RE2JIT_ABSOLUTELY_DONT_CRASH
-        #define RE2JIT_NULL_CHECK(x) if ((x) == NULL)
-    #else
-        #define RE2JIT_NULL_CHECK(x) (void) (x); if (0)
-    #endif
-
 
     enum RE2JIT_ANCHOR_FLAGS {
         /* If start point is unanchored, we want to create a copy of the initial thread
@@ -103,9 +96,11 @@ extern "C" {
         size_t offset;
         size_t length;
         size_t states;
-        unsigned int queue;
+        unsigned int queue : 1;
+        /* Set to 1 if malloc fails during matching. */
+        unsigned int oom : 1;
         /* Anchoring mode; enum RE2JIT_ANCHOR_FLAGS. */
-        unsigned int flags;
+        unsigned int flags : 2;
         /* State flags for zero-width checks; enum RE2JIT_EMPTY_FLAGS.
          * Inverted, so `empty & expected` is zero if every expected flag is set. */
         unsigned int empty;
@@ -115,10 +110,6 @@ extern "C" {
         /* A bitmap that may be used to mark visited states. It is reset
          * automatically every time the input pointer advances. */
         uint8_t *bitmap;
-        /* The state to spawn the initial thread with. */
-        const void *initial;
-        /* Function to call to compute the epsilon closure of a single state. */
-        void (*entry)(struct rejit_threadset_t *, const void *);
         /* Currently active thread, set by `thread_dispatch`. */
         struct rejit_thread_t *running;
         /* Last (so far) thread forked off the currently running one. Threads are created
@@ -126,6 +117,10 @@ extern "C" {
         struct rejit_thread_t *forked;
         /* Linked list of failed threads. These can be reused to avoid allocations. */
         struct rejit_thread_t *free;
+        /* The state to spawn the initial thread with. */
+        const void *initial;
+        /* Function to call to compute the epsilon closure of a single state. */
+        void (*entry)(struct rejit_threadset_t *, const void *);
         /* Doubly-linked list of threads ordered by descending priority. Again.
          * There is no match iff this becomes empty at some point, and there is a match
          * iff there is exactly one thread, and it is not in any of the queues. */
@@ -147,26 +142,23 @@ extern "C" {
 
     /* Finish initialization of an NFA. Input, its length, the number of capturing
      * parentheses and states, as well as the initial state and the entry point
-     * should all be set prior to calling this. Returns 0 on failure. */
-    int  rejit_thread_init(struct rejit_threadset_t *);
+     * should all be set prior to calling this. */
+    void rejit_thread_init(struct rejit_threadset_t *);
     void rejit_thread_free(struct rejit_threadset_t *);
 
     /* Run all threads on the active queue, switch to the other one, repeat
-     * until either both queues are empty or there is no input to consume. */
-    int rejit_thread_dispatch(struct rejit_threadset_t *);
+     * until either both queues are empty or there is no input to consume.
+     * Return -1 if ran out of memory, 0 if failed, and 1 if matched, in which
+     * case a provided pointer will be set to the array of subgroup boundaries. */
+    int rejit_thread_dispatch(struct rejit_threadset_t *, int **);
 
     /* Claim that the currently running thread has matched the input string.
-     * Return 0 if it has actually failed due to anchoring, 1 otherwise. */
+     * Return 1 if no point in following the remaining epsilon transitions. */
     int rejit_thread_match(struct rejit_threadset_t *);
 
     /* Create a copy of the current thread and place it onto the waiting queue
-     * until N more bytes of input are consumed. Always returns 0. */
+     * until N more bytes of input are consumed. Return 1 in same cases as `match`. */
     int rejit_thread_wait(struct rejit_threadset_t *, const void *, size_t);
-
-    /* If there is a thread in a matched state, return 1 and a pointer
-     * to its array of subgroup boundaries. Otherwise, return 0. If dispatch
-     * has not terminated yet, behavior is undefined. */
-    int rejit_thread_result(struct rejit_threadset_t *, int **);
 
     /* Save the current state bitmap and create a new, zero-filled one
      * because there was some change in state that is impossible to record.

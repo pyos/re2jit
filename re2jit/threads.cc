@@ -4,80 +4,7 @@
 #include "threads.h"
 
 
-static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
-{
-    struct rejit_thread_t *t = r->free;
-
-    if (t) {
-        r->free = t->next;
-        t->next = t;
-        return t;
-    }
-
-    return (struct rejit_thread_t *) malloc(sizeof(struct rejit_thread_t)
-                                          + sizeof(int) * r->groups);
-}
-
-
-static struct rejit_thread_t *rejit_thread_fork(struct rejit_threadset_t *r)
-{
-    struct rejit_thread_t *t = rejit_thread_acquire(r);
-    struct rejit_thread_t *c = r->running;
-
-    RE2JIT_NULL_CHECK(t) return NULL;
-    rejit_list_append(r->forked, t);
-    memcpy(t->groups, c->groups, sizeof(int) * r->groups);
-    t->bitmap_id = c->bitmap_id;
-    return r->forked = t;
-}
-
-
-static struct rejit_thread_t *rejit_thread_initial(struct rejit_threadset_t *r)
-{
-    struct rejit_thread_t *t = rejit_thread_acquire(r);
-
-    RE2JIT_NULL_CHECK(t) return NULL;
-    memset(t->groups, 255, sizeof(int) * r->groups);
-    t->wait = 0;
-    t->state = r->initial;
-    t->groups[0] = r->offset;
-    t->bitmap_id = 0;
-    rejit_list_append(r->all_threads.last, t);
-    rejit_list_append(r->queues[r->queue].last, &t->category);
-    return t;
-}
-
-
-int rejit_thread_init(struct rejit_threadset_t *r)
-{
-    rejit_list_init(&r->all_threads);
-
-    r->bitmap = (uint8_t *) calloc(1, (r->states + 7) / 8);
-    RE2JIT_NULL_CHECK(r->bitmap) return 0;
-    rejit_list_init(&r->queues[0]);
-    rejit_list_init(&r->queues[1]);
-    r->empty   = ~(RE2JIT_EMPTY_BEGIN_LINE | RE2JIT_EMPTY_BEGIN_TEXT);
-    r->offset  = 0;
-    r->queue   = 0;
-    r->free    = NULL;
-    r->running = NULL;
-    r->bitmap_id      = 0;
-    r->bitmap_id_last = 0;
-
-    if (!r->length)
-        r->empty &= ~(RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT);
-
-    RE2JIT_NULL_CHECK(rejit_thread_initial(r)) {
-        free(r->bitmap);
-        r->bitmap = NULL;
-        return 0;
-    }
-
-    return 1;
-}
-
-
-void rejit_thread_free(struct rejit_threadset_t *r)
+static void rejit_thread_free_lists(struct rejit_threadset_t *r)
 {
     struct rejit_thread_t *a, *b;
 
@@ -88,59 +15,144 @@ void rejit_thread_free(struct rejit_threadset_t *r)
             free(b);                  \
         }                             \
     } while (0)
-
     FREE_LIST(r->free, NULL);
     FREE_LIST(r->all_threads.first, rejit_list_end(&r->all_threads));
-    free(r->bitmap);
-    r->bitmap = NULL;
     #undef FREE_LIST
+
+    r->oom = 1;
 }
 
 
-int rejit_thread_dispatch(struct rejit_threadset_t *r)
+static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
+{
+    struct rejit_thread_t *t = r->free;
+
+    if (t) {
+        r->free = t->next;
+        t->next = t;
+        return t;
+    }
+
+    t = (struct rejit_thread_t *) malloc(sizeof(struct rejit_thread_t)
+                                       + sizeof(int) * r->groups);
+
+    if (t == NULL)
+        // Well, shit.
+        rejit_thread_free_lists(r);
+
+    return t;
+}
+
+
+static struct rejit_thread_t *rejit_thread_fork(struct rejit_threadset_t *r)
+{
+    struct rejit_thread_t *t = rejit_thread_acquire(r);
+    struct rejit_thread_t *c = r->running;
+    if (t == NULL) return NULL;
+
+    rejit_list_append(r->forked, t);
+    memcpy(t->groups, c->groups, sizeof(int) * r->groups);
+    t->bitmap_id = c->bitmap_id;
+    return r->forked = t;
+}
+
+
+static struct rejit_thread_t *rejit_thread_initial(struct rejit_threadset_t *r)
+{
+    struct rejit_thread_t *t = rejit_thread_acquire(r);
+    if (t == NULL) return NULL;
+
+    memset(t->groups, 255, sizeof(int) * r->groups);
+    t->wait      = 0;
+    t->bitmap_id = 0;
+    t->groups[0] = r->offset;
+    t->state     = r->initial;
+    rejit_list_append(r->all_threads.last, t);
+    rejit_list_append(r->queues[r->queue].last, &t->category);
+    return t;
+}
+
+
+void rejit_thread_init(struct rejit_threadset_t *r)
+{
+    r->bitmap         = (uint8_t *) calloc(1, (r->states + 7) / 8);
+    r->bitmap_id      = 0;
+    r->bitmap_id_last = 0;
+    r->offset         = 0;
+    r->free           = NULL;
+    r->running        = NULL;
+    r->oom            = r->bitmap == NULL;
+    r->empty          = ~(RE2JIT_EMPTY_BEGIN_LINE | RE2JIT_EMPTY_BEGIN_TEXT);
+    rejit_list_init(&r->all_threads);
+    rejit_list_init(&r->queues[0]);
+    rejit_list_init(&r->queues[1]);
+
+    if (!r->length)
+        r->empty &= ~(RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT);
+
+    rejit_thread_initial(r);
+}
+
+
+void rejit_thread_free(struct rejit_threadset_t *r)
+{
+    rejit_thread_free_lists(r);
+    free(r->bitmap);
+}
+
+
+int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
 {
     unsigned char queue = r->queue;
 
     while (1) {
-        struct rejit_thread_t *t = r->queues[queue].first;
+        struct rejit_thread_t *t;
 
-        for (; t != rejit_list_end(&r->queues[queue]); t = r->queues[queue].first) {
-            struct rejit_thread_t *q = RE2JIT_DEREF_THREAD(t);
+        while ((t = r->queues[queue].first) != rejit_list_end(&r->queues[queue])) {
+            t = RE2JIT_DEREF_THREAD(t);
 
-            if (q->wait) {
-                q->wait--;
-                rejit_list_remove(&q->category);
-                rejit_list_append(r->queues[!queue].last, &q->category);
+            if (t->wait--) {
+                rejit_list_remove(&t->category);
+                rejit_list_append(r->queues[!queue].last, &t->category);
                 continue;
             }
 
-            r->running = q;
-            r->forked  = q->prev;
-            rejit_list_remove(q);
-            rejit_list_remove(&q->category);
+            r->running = t;
+            r->forked  = t->prev;
+            rejit_list_remove(t);
+            rejit_list_remove(&t->category);
 
-            if (r->bitmap_id != q->bitmap_id) {
-                r->bitmap_id  = q->bitmap_id;
+            if (r->bitmap_id != t->bitmap_id) {
+                r->bitmap_id  = t->bitmap_id;
                 memset(r->bitmap, 0, (r->states + 7) / 8);
             }
 
-            r->entry(r, q->state);
-            q->next = r->free;
-            r->free = q;
+            r->entry(r, t->state);
+            t->next = r->free;
+            r->free = t;
         }
 
-        if (!r->length)
-            return 0;
+        if (r->oom)
+            // XOO < *ac was completely screwed out of memory
+            //        and nothing can fix that!!*
+            return -1;
+
+        if (!r->length) {
+            if (r->all_threads.first == rejit_list_end(&r->all_threads))
+                return 0;
+
+            *groups = r->all_threads.first->groups;
+            return 1;
+        }
+
+        r->offset++;
+        r->queue = queue = !queue;
+        r->empty = ~0;
 
         memset(r->bitmap, 0, (r->states + 7) / 8);
 
-        r->queue = queue = !queue;
-        r->offset++;
-        r->empty = ~0;
-
         if (*r->input++ == '\n')
             r->empty &= ~RE2JIT_EMPTY_BEGIN_LINE;
-
         if (--r->length == 0)
             r->empty &= ~(RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT);
         else if (*r->input == '\n')
@@ -149,10 +161,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r)
         // Word boundaries not supported because UTF-8.
 
         if (!(r->flags & RE2JIT_ANCHOR_START))
-            RE2JIT_NULL_CHECK(rejit_thread_initial(r)) {
-                // XOO < *ac was completely screwed out of memory
-                //        and nothing can fix that!!*
-            }
+            rejit_thread_initial(r);
     }
 }
 
@@ -164,7 +173,11 @@ int rejit_thread_match(struct rejit_threadset_t *r)
         return 0;
 
     struct rejit_thread_t *t = rejit_thread_fork(r);
-    RE2JIT_NULL_CHECK(t) return 0;
+
+    if (t == NULL)
+        // Visiting other paths will not help us now.
+        return 1;
+
     rejit_list_init(&t->category);
     t->groups[1] = r->offset;
 
@@ -185,21 +198,11 @@ int rejit_thread_match(struct rejit_threadset_t *r)
 int rejit_thread_wait(struct rejit_threadset_t *r, const void *state, size_t shift)
 {
     struct rejit_thread_t *t = rejit_thread_fork(r);
-    RE2JIT_NULL_CHECK(t) return 0;
+    if (t == NULL) return 1;
     t->state = state;
     t->wait  = shift - 1;
     rejit_list_append(r->queues[!r->queue].last, &t->category);
     return 0;
-}
-
-
-int rejit_thread_result(struct rejit_threadset_t *r, int **groups)
-{
-    if (r->all_threads.first == rejit_list_end(&r->all_threads))
-        return 0;
-
-    *groups = r->all_threads.first->groups;
-    return 1;
 }
 
 
@@ -215,7 +218,11 @@ int rejit_thread_bitmap_save(struct rejit_threadset_t *r)
 {
     struct _bitmap *s = (struct _bitmap *) malloc(sizeof(struct _bitmap) + (r->states + 7) / 8);
 
-    RE2JIT_NULL_CHECK(s) return 0;
+    if (s == NULL) {
+        rejit_thread_free_lists(r);
+        return 0;
+    }
+
     memset(s->bitmap, 0, (r->states + 7) / 8);
     s->old_id  = r->running->bitmap_id;
     s->old_map = r->bitmap;
