@@ -86,6 +86,6 @@ namespace re2jit
     }
 
 
-    template class it::_simple_deleter<native>;
-    template class it::_simple_deleter<re2::Prog>;
+    template struct it::_simple_deleter<native>;
+    template struct it::_simple_deleter<re2::Prog>;
 };
