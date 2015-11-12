@@ -52,7 +52,7 @@ PYTHON3 = /usr/bin/python3
 CCFLAGS = ./ccflags
 DYNLINK = $(CC) -shared -o
 COMPILE = $(CXX) $(CXXFLAGS) $(_options) -std=c++11 -I. -I./re2 -fPIC
-CMPTEST = $(CXX) $(CXXFLAGS) $(_testopt) -std=c++11 -I. -I./re2 -L./obj -L./re2/obj -pthread
+CMPTEST = $(CXX) $(CXXFLAGS) $(_testopt) -std=c++11 -I. -I./re2 -L./obj -L./re2/obj -pthread -Wno-format-security
 
 
 .PHONY: all clean test test/%
