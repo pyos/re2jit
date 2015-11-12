@@ -41,7 +41,7 @@ static struct rejit_thread_t *rejit_thread_initial(struct rejit_threadset_t *r)
     t->wait = 0;
     t->state = r->initial;
     t->groups[0] = r->offset;
-    t->bitmap_id = ++r->bitmap_id_last;
+    t->bitmap_id = 0;
     rejit_list_append(r->all_threads.last, t);
     rejit_list_append(r->queues[r->queue].last, &t->category);
     return t;
