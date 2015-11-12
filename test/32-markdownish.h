@@ -12,6 +12,7 @@
  * rewritten in dg, although it does not see much use. Here it is, in all its
  * magnificient regexp-y glory: https://github.com/pyos/dg/blob/gh-pages/dmark.dg
  */
+#include <vector>
 #include <fstream>
 #include <sstream>
 #include <iostream>
