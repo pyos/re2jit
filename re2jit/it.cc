@@ -1,3 +1,4 @@
+#include <new>
 #include <re2/prog.h>
 #include <re2/regexp.h>
 
@@ -19,18 +20,17 @@
 
 namespace re2jit
 {
-    it::it(const re2::StringPiece& pattern, int max_mem) : _native(NULL), _bytecode(NULL), _x_forward(NULL), _x_reverse(NULL)
+    it::it(const re2::StringPiece& pattern, int max_mem)
     {
-        re2::RegexpStatus status;
+        auto pattern2 = pattern.as_string();
+        auto pure_re2 = rewrite(pattern2);
 
-        _pattern  = pattern.as_string();
-        _pattern2 = pattern.as_string();
-        _pure_re2 = rewrite(_pattern2);
+        re2::RegexpStatus status;
         // Some other parsing options:
         //   re2::Regexp::DotNL -- use `(?s)` instead
         //   re2::Regexp::FoldCase -- use `(?i)` instead
         //   re2::Regexp::NeverCapture -- write `(?:...)`, don't be lazy
-        _regexp = re2::Regexp::Parse(_pattern2, re2::Regexp::LikePerl, &status);
+        _regexp = re2::Regexp::Parse(pattern2, re2::Regexp::LikePerl, &status);
 
         if (_regexp == NULL) {
             _error = status.Text();
@@ -44,21 +44,21 @@ namespace re2jit
             return;
         }
 
-        _native = new native{_bytecode};
+        _native = new (std::nothrow) native{_bytecode};
 
-        if (_native->entry == NULL || _native->state == NULL) {
+        if (_native == NULL || _native->entry == NULL || _native->state == NULL) {
             _error = "JIT compilation error";
             return;
         }
 
-        if (_pure_re2) {
+        if (pure_re2) {
             re2::Regexp *r = re2::Regexp::Parse(pattern, re2::Regexp::LikePerl, &status);
 
             if (r != NULL) {
                 // don't care if NULL, simply won't use DFA.
-                _x_forward = r->CompileToProg(max_mem / 4);
-                _x_reverse = r->CompileToReverseProg(max_mem / 4);
-                             r->Decref();
+                _forward = r->CompileToProg(max_mem / 4);
+                _reverse = r->CompileToReverseProg(max_mem / 4);
+                r->Decref();
             }
         }
     }
@@ -68,48 +68,49 @@ namespace re2jit
     {
         delete _native;
         delete _bytecode;
-        delete _x_forward;
-        delete _x_reverse;
+        delete _forward;
+        delete _reverse;
         delete _capturing_groups;
         if (_regexp)
             _regexp->Decref();
     }
 
 
-    bool it::match(const re2::StringPiece& text, RE2::Anchor anchor,
-                         re2::StringPiece* groups, int ngroups) const
+    bool it::match(re2::StringPiece text, RE2::Anchor anchor,
+                   re2::StringPiece* groups, int ngroups) const
     {
         if (!ok())
             return 0;
 
         unsigned int flags = 0;
 
-        if (_bytecode->anchor_start() || anchor != RE2::UNANCHORED)
-            flags |= RE2JIT_ANCHOR_START;
-
-        if (_bytecode->anchor_end() || anchor == RE2::ANCHOR_BOTH)
+        if (anchor == RE2::ANCHOR_BOTH || _bytecode->anchor_end())
             flags |= RE2JIT_ANCHOR_END;
 
-        if (!(flags & RE2JIT_ANCHOR_START) && _x_forward && _x_reverse) {
+        if (anchor != RE2::UNANCHORED || _bytecode->anchor_start())
+            flags |= RE2JIT_ANCHOR_START;
+
+        else if (_forward && _reverse) {
             re2::StringPiece found;
             bool failed  = false;
-            bool matched = _x_forward->SearchDFA(text, text, re2::Prog::kUnanchored,
-                                                 re2::Prog::kFirstMatch, &found, &failed, NULL);
+            bool matched = _forward->SearchDFA(text, text, re2::Prog::kUnanchored,
+                                               re2::Prog::kFirstMatch, &found, &failed, NULL);
 
             if (!failed) {
-                if (!matched)
-                    return 0;
+                if (!matched) return 0;
+                if (!ngroups) return 1;
 
-                matched = _x_reverse->SearchDFA(found, text, re2::Prog::kAnchored,
-                                                re2::Prog::kLongestMatch, &found, &failed, NULL);
+                failed = !_reverse->SearchDFA(found, text, re2::Prog::kAnchored,
+                                              re2::Prog::kLongestMatch, &found, &failed, NULL);
 
-                if (!failed && matched) {
-                    if (ngroups > 1)  // no point in doing anything else otherwise.
-                        return it::match(found, RE2::ANCHOR_BOTH, groups, ngroups);
-
-                    if (ngroups)
+                if (!failed) {
+                    if (ngroups < 2) {
                         *groups = found;
-                    return 1;
+                        return 1;
+                    }
+
+                    text  = found;
+                    flags = RE2JIT_ANCHOR_START | RE2JIT_ANCHOR_END;
                 }
             }
         }
@@ -130,7 +131,7 @@ namespace re2jit
 
         if (r == 1)
             for (int i = 0; i < ngroups; i++, gs += 2) {
-                if (gs[0] == -1 || gs[1] == -1)
+                if (gs[1] == -1)
                     groups[i].set((const char *) NULL, 0);
                 else
                     groups[i].set(text.data() + gs[0], gs[1] - gs[0]);
@@ -141,9 +142,9 @@ namespace re2jit
     }
 
 
-    std::string it::lastgroup(const re2::StringPiece *match, int nmatch) const
+    std::string it::lastgroup(const re2::StringPiece *groups, int ngroups) const
     {
-        if (!ok())
+        if (!ok() || groups->data() == NULL)
             return "";
 
         if (_capturing_groups == NULL)
@@ -152,23 +153,16 @@ namespace re2jit
         if (_capturing_groups == NULL)
             return "";
 
-        const char *end = NULL;
-        int grp = 0;
+        int last = 0;
+        auto end = groups++->data();
 
-        for (int i = 1; i < nmatch; i++) {  // 0 = whole match
-            if (match[i].data() == NULL || match[i].data() < end)
-                continue;
+        for (int i = 1; i < ngroups; i++, groups++)
+            if (groups->data() >= end) {
+                last = i;
+                end  = groups->data() + groups->size();
+            }
 
-            end = match[i].data() + match[i].size();
-            grp = i;
-        }
-
-        const auto it = _capturing_groups->find(grp);
-
-        if (it == _capturing_groups->cend())
-            return "";
-
-        std::string n = it->second;
-        return n;
+        const auto it = _capturing_groups->find(last);
+        return it == _capturing_groups->end() ? "" : it->second;
     }
 };
