@@ -17,23 +17,23 @@ _require_vendor = \
 
 
 _require_headers = \
-	re2/.git \
-	re2jit/it.h \
-	re2jit/list.h \
-	re2jit/threads.h \
+	re2/.git          \
+	re2jit/it.h       \
+	re2jit/list.h     \
+	re2jit/threads.h  \
 	re2jit/rewriter.h \
-	re2jit/unicode.h \
+	re2jit/unicode.h  \
 	re2jit/unicodedata.h
 
 
 _require_objects = \
-	obj/it.o \
+	obj/it.o      \
 	obj/threads.o \
 	obj/unicodedata.o
 
 
 _require_platform_code = \
-	re2jit/asm.h \
+	re2jit/asm64.h   \
 	re2jit/it.x64.cc \
 	re2jit/it.vm.cc
 
@@ -43,16 +43,16 @@ _require_library = \
 
 
 _require_test_run = \
-	test/01-invalid \
-	test/10-literal \
-	test/11-anchoring \
-	test/12-branching \
-	test/13-exponential \
-	test/20-submatching \
-	test/21-lastgroup \
+	test/01-invalid        \
+	test/10-literal        \
+	test/11-anchoring      \
+	test/12-branching      \
+	test/13-exponential    \
+	test/20-submatching    \
+	test/21-lastgroup      \
 	test/22-backreferences \
-	test/30-long \
-	test/31-unicode \
+	test/30-long           \
+	test/31-unicode        \
 	test/32-markdownish
 
 
@@ -61,8 +61,8 @@ INSTALL = install -D
 PYTHON3 = /usr/bin/python3
 CCFLAGS = ./ccflags
 DYNLINK = $(CC) -shared -o
-COMPILE = $(CXX) $(CXXFLAGS) $(_options) -std=c++11 -I. -I./re2 -L./obj -L./re2/obj -fPIC
-CMPTEST = $(CXX) $(CXXFLAGS) $(_testopt) -std=c++11 -I. -I./re2 -L./obj -L./re2/obj -pthread
+COMPILE = $(CXX) $(CXXFLAGS) $(_options) -std=c++11 -I. -I./re2 -fPIC
+CMPTEST = $(CXX) $(CXXFLAGS) $(_testopt) -std=c++11 -I. -I./re2 -L./obj -L./re2/obj -pthread -Wno-format-security
 
 
 .PHONY: all clean test test/%

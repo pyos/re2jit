@@ -2,7 +2,7 @@
 #include <vector>
 #include <sys/mman.h>
 
-#include "asm.h"
+#include "asm64.h"
 
 // `&NFA->input` -- like offsetof, but with 100% more undefined behavior.
 static constexpr const struct rejit_threadset_t *NFA    = NULL;

@@ -77,11 +77,10 @@ namespace re2jit
 
 
     bool it::match(const re2::StringPiece& text, RE2::Anchor anchor,
-                         re2::StringPiece* match, int nmatch) const
+                         re2::StringPiece* groups, int ngroups) const
     {
-        if (!ok()) {
+        if (!ok())
             return 0;
-        }
 
         unsigned int flags = 0;
 
@@ -105,11 +104,11 @@ namespace re2jit
                                                 re2::Prog::kLongestMatch, &found, &failed, NULL);
 
                 if (!failed && matched) {
-                    if (nmatch > 1)  // no point in doing anything else otherwise.
-                        return it::match(found, RE2::ANCHOR_BOTH, match, nmatch);
+                    if (ngroups > 1)  // no point in doing anything else otherwise.
+                        return it::match(found, RE2::ANCHOR_BOTH, groups, ngroups);
 
-                    if (nmatch)
-                        *match = found;
+                    if (ngroups)
+                        *groups = found;
                     return 1;
                 }
             }
@@ -118,7 +117,7 @@ namespace re2jit
         struct rejit_threadset_t nfa;
         nfa.input   = text.data();
         nfa.length  = text.size();
-        nfa.groups  = 2 * nmatch + 2;
+        nfa.groups  = 2 * ngroups + 2;
         nfa.states  = _bytecode->size();
         nfa.initial = _native->state;
         nfa.entry   = (rejit_entry_t) _native->entry;
@@ -130,11 +129,11 @@ namespace re2jit
         r = rejit_thread_dispatch(&nfa, &gs);
 
         if (r == 1)
-            for (int i = 0; i < nmatch; i++, gs += 2) {
+            for (int i = 0; i < ngroups; i++, gs += 2) {
                 if (gs[0] == -1 || gs[1] == -1)
-                    match[i].set((const char *) NULL, 0);
+                    groups[i].set((const char *) NULL, 0);
                 else
-                    match[i].set(text.data() + gs[0], gs[1] - gs[0]);
+                    groups[i].set(text.data() + gs[0], gs[1] - gs[0]);
             }
 
         rejit_thread_free(&nfa);

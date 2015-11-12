@@ -45,6 +45,15 @@ Result compare(bool am, bool bm, re2::StringPiece *a, re2::StringPiece *b, ssize
 }
 
 
+#if __APPLE__
+
+template <typename F> double measure(int, const F&&)
+{
+    return 0;
+}
+
+#else
+
 template <typename F> double measure(int k, const F&& fn)
 {
     struct timespec start;
@@ -58,6 +67,8 @@ template <typename F> double measure(int k, const F&& fn)
     auto n = end.tv_nsec - start.tv_nsec;
     return n * 1e-9 + s;
 }
+
+#endif
 
 
 #define GENERIC_TEST(name, regex, anchor, _input, ngroups, __fn, answer, ...) \

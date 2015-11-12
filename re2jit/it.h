@@ -30,11 +30,11 @@ namespace re2jit
          *    re2::ANCHOR_START -- the match should be located at the start of the string.
          *    re2::ANCHOR_BOTH -- the match should span the whole string.
          *
-         * @param match: a preallocated array of `re2::StringPiece`-s to store
+         * @param groups: a preallocated array of `re2::StringPiece`-s to store
          *               the contents of capturing groups in. The first "group"
          *               is the whole regexp. Unmatched groups are set to NULL.
          *
-         * @param nmatch: the length of `match`.
+         * @param ngroups: the length of `groups`.
          *
          * @return: whether there was a match. If there wasn't, the array is not modified.
          *
@@ -42,7 +42,7 @@ namespace re2jit
          *
          */
         bool match(const re2::StringPiece& text, RE2::Anchor anchor = RE2::ANCHOR_START,
-                         re2::StringPiece *match = NULL, int nmatch = 0) const;
+                         re2::StringPiece *groups = NULL, int ngroups = 0) const;
 
         /* Fetch the name of the last outermost group that matched as a null-terminated string.
          *
