@@ -74,7 +74,7 @@ struct re2jit::native
         // compiler pass:
         //   1. 0(code) -- entry point; %rdi = struct rejit_threadset_t *nfa, %rsi = void *state
         //   2. (state) -- some opcode; %rdi = struct rejit_threadset_t *nfa
-        code.jmp(as::rsi);
+        code.jmp(as::rsi).ud2();
         // Intel Optimization Reference Manual, page 3-6, 3.4.1.3: Static Prediction
         //   ...make the fall-through code following a conditional branch be the unlikely
         //      target for a branch with a backward target.
