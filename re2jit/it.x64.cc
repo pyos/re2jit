@@ -68,13 +68,18 @@ struct re2jit::native
         }
 
         as::code code;
-        as::label fail;
+        as::label fail, fail_likely;
         as::label succeed;
         std::vector<as::label> labels(n);
         // compiler pass:
         //   1. 0(code) -- entry point; %rdi = struct rejit_threadset_t *nfa, %rsi = void *state
         //   2. (state) -- some opcode; %rdi = struct rejit_threadset_t *nfa
-        code.jmp(as::rsi).mark(fail).xor_(as::eax, as::eax).mark(succeed).ret();
+        code.jmp(as::rsi);
+        // Intel Optimization Reference Manual, page 3-6, 3.4.1.3: Static Prediction
+        //   ...make the fall-through code following a conditional branch be the unlikely
+        //      target for a branch with a backward target.
+        // See end of this function for an unlikely forward target.
+        code.mark(fail_likely).xor_(as::eax, as::eax).ret();
 
         VISIT(emitted, prog->start());
 
@@ -120,8 +125,7 @@ struct re2jit::native
                             .mov  (labels[op.out()], as::rsi)
                             .push (as::rdi)
                             .call (&rejit_thread_wait)
-                            .pop  (as::rdi)
-                            .jmp  (fail);
+                            .pop  (as::rdi);
                         VISIT(emitted, op.out());
                         break;
 
@@ -166,7 +170,7 @@ struct re2jit::native
                 code.test(as::eax, as::eax).jmp(succeed, as::not_zero).mark(fail);
             }
 
-            if (ext.size()) code.jmp(fail); else switch (op->opcode()) {
+            if (ext.size()) code.xor_(as::eax, as::eax).ret(); else switch (op->opcode()) {
                 case re2::kInstAltMatch:
                 case re2::kInstAlt:
                     // if (out(nfa)) return 1;
@@ -203,11 +207,11 @@ struct re2jit::native
 
                         if (op->hi() == op->lo())
                             // if (al != lo) return;
-                            code.cmp(op->lo(), as::al).jmp(fail, as::not_equal);
+                            code.cmp(op->lo(), as::al).jmp(fail_likely, as::not_equal);
                         else
                             // if (al < lo || hi < al) return;
                             code.sub(op->lo(),            as::al)
-                                .cmp(op->hi() - op->lo(), as::al).jmp(fail, as::more_u);
+                                .cmp(op->hi() - op->lo(), as::al).jmp(fail_likely, as::more_u);
 
                         op = prog->inst(op->out());
                     } while (op != end);
@@ -270,6 +274,7 @@ struct re2jit::native
             }
         }
 
+        code.mark(fail).xor_(as::eax, as::eax).mark(succeed).ret();
         #undef VISIT
 
         void *m = mmap(NULL, code.size(), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
