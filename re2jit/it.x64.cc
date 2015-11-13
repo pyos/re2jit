@@ -195,8 +195,12 @@ struct re2jit::native
                         .mov(as::mem(as::rdi + &NFA->input), as::rsi);
 
                     do {
+                        // Intel Optimization Reference Manual, page 3-26, 3.5.1.8:
+                        //   Break dependencies on portions of registers [...] by operating
+                        //   on 32-bit registers instead of partial registers. For moves,
+                        //   this can be accomplished [...] by using MOVZX.
                         // al = rsi[i];
-                        code.mov(as::mem(as::rsi + i++), as::al);
+                        code.movzb(as::mem(as::rsi + i++), as::eax);
 
                         if (op->foldcase())
                             // if ('A' <= al && al <= 'Z') al = al - 'A' + 'a';

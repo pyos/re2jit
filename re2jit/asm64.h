@@ -195,6 +195,8 @@ namespace as
         code& mov   (mem a,  rb b) { return rex(0, a, b).imm8(0x8a).modrm(a, b)          ; }
         code& mov   (mem a, r32 b) { return rex(0, a, b).imm8(0x8b).modrm(a, b)          ; }
         code& mov   (mem a, r64 b) { return rex(1, a, b).imm8(0x8b).modrm(a, b)          ; }
+        code& movzb (mem a, r32 b) { return rex(0, a, b).imm8(0x0f).
+                                                         imm8(0xb6).modrm(a, b)          ; }
         code& neg   (       r32 b) { return rex(0,    b).imm8(0xf7).modrm(3, b)          ; }
         code& neg   (       r64 b) { return rex(1,    b).imm8(0xf7).modrm(3, b)          ; }
         code& negl  (       mem b) { return rex(0,    b).imm8(0xf7).modrm(3, b)          ; }
