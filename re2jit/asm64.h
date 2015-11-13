@@ -241,6 +241,7 @@ namespace as
         code& test  (r64 a, r64 b) { return rex(1, a, b).imm8(0x85).modrm(a, b)          ; }
         code& test  ( i8 a, mem b) { return rex(0,    b).imm8(0xf6).modrm(0, b).imm8 (a) ; }
         code& test  (i32 a, mem b) { return rex(0,    b).imm8(0xf7).modrm(0, b).imm32(a) ; }
+        code& ud2   (            ) { return   imm8(0x0f).imm8(0x0b)                      ; }
         code& xor_  ( i8 a,  rb b) { return rex(0,    b).imm8(0x80).modrm(6, b).imm8 (a) ; }
         code& xor_  ( i8 a, r32 b) { return rex(0,    b).imm8(0x83).modrm(6, b).imm8 (a) ; }
         code& xor_  ( i8 a, r64 b) { return rex(1,    b).imm8(0x83).modrm(6, b).imm8 (a) ; }
