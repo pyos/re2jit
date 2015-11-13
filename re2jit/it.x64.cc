@@ -4,7 +4,7 @@
 
 #include "asm64.h"
 
-// `&NFA->input` -- like offsetof, but with 100% more undefined behavior.
+// `&NFA->input` -- like offsetof, but shorter and with 100% more undefined behavior.
 static constexpr const struct rejit_threadset_t *NFA    = NULL;
 static constexpr const struct rejit_thread_t    *THREAD = NULL;
 
@@ -17,22 +17,24 @@ struct re2jit::native
 
     native(re2::Prog *prog)
     {
-        size_t n = prog->size();
+        std::vector<unsigned> stack(prog->size());
+        unsigned *it;
+        unsigned *visited;
+        #define DFS(count) it      = &stack[0]; \
+                           visited = &count[0]; \
+                           visited[*it++ = prog->start()]++; \
+                           while (it-- != &stack[0])
+        #define VISIT(i) if (!visited[i]++) *it++ = i
+
         // dead code elimination pass:
         //   1. ignore all instructions with indegree = 0
         //   2. do not emit bitmap checks for those with indegree = 1
         //   3. find out changing which groups would require resetting the state bitmap
-        std::vector<unsigned> stack(n);
-        std::vector<unsigned> emitted(n);
-        std::vector<unsigned> indegree(n);
+        std::vector<unsigned> indegree(prog->size());
         std::set   <unsigned> backrefs;
-        auto it = stack.begin();
-        #define VISIT(a, i) if (!a[i]++) *it++ = i
 
-        VISIT(indegree, prog->start());
-
-        while (it != stack.begin()) {
-            auto op  = prog->inst(*--it);
+        DFS(indegree) {
+            auto op  = prog->inst(*it);
             auto ext = re2jit::is_extcode(prog, op);
 
             for (auto& op : ext) switch (op.opcode()) {
@@ -40,16 +42,16 @@ struct re2jit::native
                     backrefs.insert(op.arg());
 
                 case re2jit::inst::kUnicodeType:
-                    VISIT(indegree, op.out());
+                    VISIT(op.out());
             }
 
             if (!ext.size()) switch (op->opcode()) {
                 case re2::kInstAlt:
                 case re2::kInstAltMatch:
-                    VISIT(indegree, op->out1());
+                    VISIT(op->out1());
 
                 default:
-                    VISIT(indegree, op->out());
+                    VISIT(op->out());
 
                 case re2::kInstFail:
                 case re2::kInstMatch:
@@ -63,28 +65,31 @@ struct re2jit::native
                         op = prog->inst(i = op->out());
                     while (op->opcode() == re2::kInstByteRange && !re2jit::maybe_extcode(op));
 
-                    VISIT(indegree, i);
+                    VISIT(i);
             }
         }
 
-        as::code code;
-        as::label fail, fail_likely;
-        as::label succeed;
-        std::vector<as::label> labels(n);
         // compiler pass:
-        //   1. 0(code) -- entry point; %rdi = struct rejit_threadset_t *nfa, %rsi = void *state
-        //   2. (state) -- some opcode; %rdi = struct rejit_threadset_t *nfa
+        //   emitted code is an `int(struct rejit_threadset_t* rdi, const void* rsi)`.
+        //   states are opcodes; each is an `int(struct rejit_threadset_t* rdi)`.
+        //   return value is 1 iff a matching state is reachable through epsilon transitions.
+        as::code  code;
+        as::label fail, fail_likely, /* always unlikely: */ succeed;
+        std::vector<as::label> labels(prog->size());
+        std::vector<unsigned> emitted(prog->size());
+        // Intel Optimization Reference Manual, page 3-9, 3.4.1.6: Branch Selection
+        //   ...if indirect branches are common but they cannot be predicted by branch
+        //      prediction hardware, then follow the indirect branch with a UD2
+        //      instruction, which will stop the processor from decoding down the
+        //      fall-through path.
         code.jmp(as::rsi).ud2();
         // Intel Optimization Reference Manual, page 3-6, 3.4.1.3: Static Prediction
         //   ...make the fall-through code following a conditional branch be the unlikely
         //      target for a branch with a backward target.
-        // See end of this function for an unlikely forward target.
         code.mark(fail_likely).xor_(as::eax, as::eax).ret();
 
-        VISIT(emitted, prog->start());
-
-        while (it != stack.begin()) {
-            auto op  = prog->inst(*--it);
+        DFS(emitted) {
+            auto op  = prog->inst(*it);
             auto ext = re2jit::is_extcode(prog, op);
 
             code.mark(labels[*it]);
@@ -93,7 +98,7 @@ struct re2jit::native
             if (op->opcode() != re2::kInstFail && indegree[*it] > 1)
                 // if (bit(nfa->bitmap, *it) == 1) return; bit(nfa->bitmap, *it) = 1;
                 code.mov  (as::mem(as::rdi + &NFA->bitmap), as::rsi)
-                    .test (as::i8(1 << (*it % 8)), as::mem(as::rsi + *it / 8)).jmp(fail, as::not_zero)
+                    .test (as::i8(1 << (*it % 8)), as::mem(as::rsi + *it / 8)).jmp(fail_likely, as::not_zero)
                     .or_  (as::i8(1 << (*it % 8)), as::mem(as::rsi + *it / 8));
 
             for (auto &op : ext) {
@@ -126,7 +131,7 @@ struct re2jit::native
                             .push (as::rdi)
                             .call (&rejit_thread_wait)
                             .pop  (as::rdi);
-                        VISIT(emitted, op.out());
+                        VISIT(op.out());
                         break;
 
                     case re2jit::inst::kBackReference: {
@@ -162,7 +167,7 @@ struct re2jit::native
                             .push(as::rdi)
                             .call(labels[op.out()])
                             .pop (as::rdi);
-                        VISIT(emitted, op.out());
+                        VISIT(op.out());
                         break;
                     }
                 }
@@ -178,8 +183,8 @@ struct re2jit::native
                         .call  (labels[op->out()])
                         .pop   (as::rdi)
                         .test  (as::eax, as::eax).jmp(succeed, as::not_zero);
-                    VISIT(emitted, op->out());
-                    VISIT(emitted, op->out1()); else code.jmp(labels[op->out1()]);
+                    VISIT(op->out());
+                    VISIT(op->out1()); else code.jmp(labels[op->out1()]);
                     break;
 
                 case re2::kInstByteRange: {
@@ -224,7 +229,7 @@ struct re2jit::native
                     code.mov(labels[r], as::rsi)
                         .mov(len,       as::edx)
                         .jmp(&rejit_thread_wait);
-                    VISIT(emitted, r);
+                    VISIT(r);
                     break;
                 }
 
@@ -254,18 +259,18 @@ struct re2jit::native
                         .pop(as::rdx)
                         .mov(as::edx, as::mem(as::rcx + &THREAD->groups[op->cap()]))
                         .ret();
-                    VISIT(emitted, op->out());
+                    VISIT(op->out());
                     break;
 
                 case re2::kInstEmptyWidth:
                     // if (nfa->empty & empty) return;
                     code.test(as::i8(op->empty()), as::mem(as::rdi + &NFA->empty))
                         .jmp (fail, as::not_zero);
-                    VISIT(emitted, op->out()); else code.jmp(labels[op->out()]);
+                    VISIT(op->out()); else code.jmp(labels[op->out()]);
                     break;
 
                 case re2::kInstNop:
-                    VISIT(emitted, op->out()); else code.jmp(labels[op->out()]);
+                    VISIT(op->out()); else code.jmp(labels[op->out()]);
                     break;
 
                 case re2::kInstMatch:
@@ -280,10 +285,11 @@ struct re2jit::native
 
         code.mark(fail).xor_(as::eax, as::eax).mark(succeed).ret();
         #undef VISIT
+        #undef DFS
 
         void *m = mmap(NULL, code.size(), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-        if (m == (void *) -1)
+        if (m == MAP_FAILED)
             return;
 
         entry = m;
