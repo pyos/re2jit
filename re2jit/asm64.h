@@ -17,8 +17,9 @@ namespace as
 
     enum condition : i8
     {
-        _0, _1, less_u, more_equal_u, equal,        not_equal,            less_equal_u, more_u, _8, _9,
-        _a, _b, less,   more_equal,   zero = equal, not_zero = not_equal, less_equal,   more
+        overflow = 0, not_overflow = 1, negative = 8, not_negative = 9, even = 10, odd  = 11,
+        less_u = 2, more_equal_u = 3, equal = 4, not_equal = 5, less_equal_u = 6, more_u = 7,
+        less  = 12, more_equal  = 13, zero  = 4, not_zero  = 5, less_equal  = 14, more  = 15
     };
 
     struct reg
@@ -81,14 +82,14 @@ namespace as
 
     struct target { size_t offset = -1;
                     std::vector<size_t> abs64;
-                    std::vector<size_t> rel32;
-                    void *deref(void *base) const { return (i8 *) base + offset; } };
+                    std::vector<size_t> rel32; };
 
     // linker needs to keep track of all existing targets, so outside code can only
     // operate with `target *`s (the actual targets are stored in a vector below).
     // unlike `typedef target* label`, this thin wrapper ensures that uninitialized
     // labels are set to NULL.
     struct label { target* tg = NULL;
+             const void  * operator()(const void *b) const { return tg ? (i8 *) b + tg->offset : NULL; }
              const target* operator->() const { return tg; } };
 
     // A simple x86-64 assembler and linker.
@@ -240,6 +241,7 @@ namespace as
         code& test  (r64 a, r64 b) { return rex(1, a, b).imm8(0x85).modrm(a, b)          ; }
         code& test  ( i8 a, mem b) { return rex(0,    b).imm8(0xf6).modrm(0, b).imm8 (a) ; }
         code& test  (i32 a, mem b) { return rex(0,    b).imm8(0xf7).modrm(0, b).imm32(a) ; }
+        code& ud2   (            ) { return   imm8(0x0f).imm8(0x0b)                      ; }
         code& xor_  ( i8 a,  rb b) { return rex(0,    b).imm8(0x80).modrm(6, b).imm8 (a) ; }
         code& xor_  ( i8 a, r32 b) { return rex(0,    b).imm8(0x83).modrm(6, b).imm8 (a) ; }
         code& xor_  ( i8 a, r64 b) { return rex(1,    b).imm8(0x83).modrm(6, b).imm8 (a) ; }
