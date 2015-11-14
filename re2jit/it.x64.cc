@@ -91,6 +91,7 @@ struct re2jit::native
         DFS(emitted) {
             auto op  = prog->inst(*it);
             auto ext = re2jit::is_extcode(prog, op);
+            as::label next_extcode;
 
             code.mark(labels[*it]);
 
@@ -101,12 +102,15 @@ struct re2jit::native
                     .test (as::i8(1 << (*it % 8)), as::mem(as::rsi + *it / 8)).jmp(fail_likely, as::not_zero)
                     .or_  (as::i8(1 << (*it % 8)), as::mem(as::rsi + *it / 8));
 
-            for (auto &op : ext) {
-                // a match at any opcode in `ext` is ok, so instead of straight up
-                // failing, jump to the next one.
-                as::label fail;
+            for (auto op = ext.crbegin(); op != ext.crend(); ++op) {
+                code.mark(next_extcode);
 
-                switch (op.opcode()) {
+                if (op != ext.crend() - 1)
+                    code.push(as::rdi)
+                        .call(next_extcode = as::label())
+                        .pop (as::rdi);
+
+                switch (op->opcode()) {
                     case re2jit::inst::kUnicodeType:
                         // chr = rejit_read_utf8(nfa->input, nfa->length);
                         code.push (as::rdi)
@@ -125,28 +129,24 @@ struct re2jit::native
                             .pop  (as::rdx)
                             .pop  (as::rdi)
                             .and_ (UNICODE_CATEGORY_GENERAL, as::al)
-                            .cmp  (op.arg(), as::al).jmp(fail, as::not_equal)
-                        // rejit_thread_wait(nfa, &out, len);
-                            .mov  (labels[op.out()], as::rsi)
-                            .push (as::rdi)
-                            .call (&rejit_thread_wait)
-                            .pop  (as::rdi);
-                        VISIT(op.out());
+                            .cmp  (op->arg(), as::al).jmp(fail, as::not_equal)
+                        // return rejit_thread_wait(nfa, &out, len);
+                            .mov  (labels[op->out()], as::rsi)
+                            .jmp  (&rejit_thread_wait);
+                        VISIT(op->out());
                         break;
 
-                    case re2jit::inst::kBackReference: {
-                        as::label empty;
-
+                    case re2jit::inst::kBackReference:
                         // if (nfa->groups <= arg * 2) return;
-                        code.cmp(as::i32(op.arg() * 2), as::mem(as::rdi + &NFA->groups))
+                        code.cmp(as::i32(op->arg() * 2), as::mem(as::rdi + &NFA->groups))
                             .jmp(fail, as::less_equal_u)
                         // if (start < 0 || end < start) return; if (end == start) goto empty;
                             .mov (as::mem(as::rdi + &NFA->running), as::rsi)
-                            .mov (as::mem(as::rsi + &THREAD->groups[op.arg() * 2 + 1]), as::ecx)
-                            .mov (as::mem(as::rsi + &THREAD->groups[op.arg() * 2]),     as::esi)
+                            .mov (as::mem(as::rsi + &THREAD->groups[op->arg() * 2 + 1]), as::ecx)
+                            .mov (as::mem(as::rsi + &THREAD->groups[op->arg() * 2]),     as::esi)
                             .test(as::esi, as::esi).jmp(fail, as::negative)
                             .sub (as::esi, as::ecx).jmp(fail, as::less)
-                            .jmp (empty, as::equal)
+                            .jmp (labels[op->out()], as::equal)
                         // if (nfa->length < end - start) return;
                             .cmp(as::rcx, as::mem(as::rdi + &NFA->length)).jmp(fail, as::less_u)
                         // if (memcmp(nfa->input, nfa->input + start - nfa->offset, end - start)) return;
@@ -157,25 +157,14 @@ struct re2jit::native
                             .mov (as::ecx, as::edx)
                             .repz().cmpsb().pop(as::rdi).jmp(fail, as::not_equal)
                         // return rejit_thread_wait(nfa, &out, end - start);
-                            .mov (labels[op.out()], as::rsi)
-                            .push(as::rdi)
-                            .call(&rejit_thread_wait)
-                            .pop (as::rdi)
-                            .jmp (fail)
-                        // empty: eax = out(nfa);
-                            .mark(empty)
-                            .push(as::rdi)
-                            .call(labels[op.out()])
-                            .pop (as::rdi);
-                        VISIT(op.out());
+                            .mov (labels[op->out()], as::rsi)
+                            .jmp (&rejit_thread_wait);
+                        VISIT(op->out());
                         break;
-                    }
                 }
-
-                code.test(as::eax, as::eax).jmp(succeed, as::not_zero).mark(fail);
             }
 
-            if (ext.size()) code.xor_(as::eax, as::eax).ret(); else switch (op->opcode()) {
+            if (!ext.size()) switch (op->opcode()) {
                 case re2::kInstAltMatch:
                 case re2::kInstAlt:
                     // if (out(nfa)) return 1;

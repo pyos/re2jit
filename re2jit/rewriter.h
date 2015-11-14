@@ -155,16 +155,9 @@ namespace re2jit
         // Third and fourth ones can be any continuation byte.
         std::vector<inst> rs;
 
-        for (inst i : _follow_empty(p, in, 0, 0)) {
-            in = p->inst(i.out());
-
-            std::vector<inst> xs = _follow_empty(p, p->inst(i.out()), i.arg() >> 2, (i.arg() & 3) << 6);
-
-            if (xs.empty())
-                return std::vector<inst>{};
-
-            rs.insert(rs.end(), xs.begin(), xs.end());
-        }
+        for (inst i : _follow_empty(p, in, 0, 0))
+        for (inst k : _follow_empty(p, p->inst(i.out()), i.arg() >> 2, (i.arg() & 3) << 6))
+            rs.push_back(k);
 
         return rs;
     }
