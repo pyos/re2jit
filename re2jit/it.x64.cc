@@ -133,7 +133,7 @@ struct re2jit::native
 
                         code.cmp  (as::i8(op->arg()), as::eax)
                             .jmp  (fail_likely, as::not_equal)
-                        // return rejit_thread_wait(nfa, &out, len);
+                        // return rejit_thread_wait(nfa, &out, edx);
                             .mov  (labels[op->out()], as::rsi)
                             .jmp  (&rejit_thread_wait);
                         VISIT(op->out());
