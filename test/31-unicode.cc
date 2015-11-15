@@ -24,3 +24,8 @@ MATCH_PERF_TEST(9000, "([\\p{Cc}|\\p{Co}]*)", ANCHOR_BOTH, "\033[31m", 2);
 // These fake opcodes shouldn't be accidentally treated as literal strings.
 MATCH_TEST("literally \\p{L}", ANCHOR_BOTH, "literally L", 1);
 MATCH_TEST("literally (?:\\p{L})+", ANCHOR_BOTH, "literally LLLLLL", 1);
+// Lu != Ll
+MATCH_TEST("UPPERCASE \\p{Lu}", ANCHOR_BOTH, "UPPERCASE L", 1);
+MATCH_TEST("UPPERCASE \\p{Lu}", ANCHOR_BOTH, "UPPERCASE u", 1);
+MATCH_TEST("lowercase \\p{Ll}", ANCHOR_BOTH, "lowercase L", 1);
+MATCH_TEST("lowercase \\p{Ll}", ANCHOR_BOTH, "lowercase u", 1);

@@ -41,7 +41,7 @@ struct re2jit::native
                 case re2jit::inst::kBackReference:
                     backrefs.insert(op.arg());
 
-                case re2jit::inst::kUnicodeType:
+                default:
                     VISIT(op.out());
             }
 
@@ -111,7 +111,8 @@ struct re2jit::native
                         .pop (as::rdi);
 
                 switch (op->opcode()) {
-                    case re2jit::inst::kUnicodeType:
+                    case re2jit::inst::kUnicodeGeneralType:
+                    case re2jit::inst::kUnicodeSpecificType:
                         // rax = rejit_read_utf8(nfa->input, nfa->length);
                         code.push (as::rdi)
                             .mov  (as::mem(as::rdi + &NFA->length), as::rsi)
@@ -125,10 +126,13 @@ struct re2jit::native
                             .movzb(as::al,  as::ecx)
                             .shr  (8,       as::eax)
                             .add  (as::mem(as::p32(UNICODE_CATEGORY_1) + as::rax * 4), as::ecx)
-                            .movzb(as::mem(as::p32(UNICODE_CATEGORY_2) + as::rcx),     as::eax)
-                        // if ((eax & UNICODE_CATEGORY_GENERAL) != arg) return;
-                            .and_ (UNICODE_CATEGORY_GENERAL, as::al)
-                            .cmp  (op->arg(), as::al).jmp(fail_likely, as::not_equal)
+                            .movzb(as::mem(as::p32(UNICODE_CATEGORY_2) + as::rcx),     as::eax);
+
+                        if (op->opcode() == re2jit::inst::kUnicodeGeneralType)
+                            code.and_(UNICODE_CATEGORY_GENERAL, as::eax);
+
+                        code.cmp  (as::i8(op->arg()), as::eax)
+                            .jmp  (fail_likely, as::not_equal)
                         // return rejit_thread_wait(nfa, &out, len);
                             .mov  (labels[op->out()], as::rsi)
                             .jmp  (&rejit_thread_wait);

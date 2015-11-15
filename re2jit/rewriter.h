@@ -15,7 +15,8 @@ namespace re2jit
     struct inst {
         enum code : uint8_t
         {
-            kUnicodeType,
+            kUnicodeGeneralType,
+            kUnicodeSpecificType,
             kBackReference,
         };
 
@@ -84,7 +85,9 @@ namespace re2jit
                     const uint8_t *id = rejit_unicode_category_id(&regexp[lp + 1], rp - lp - 1);
 
                     if (id)
-                        i = _rewrite_step(regexp, i, rp + 1, inst::kUnicodeType, *id);
+                        i = _rewrite_step(regexp, i, rp + 1,
+                            rp - lp - 1 == 1 ? inst::kUnicodeGeneralType
+                                             : inst::kUnicodeSpecificType, *id);
                 }
                 else if (isdigit(regexp[i + 1])) {
                     // \1234 -- backreference to group 1234.
