@@ -112,24 +112,23 @@ struct re2jit::native
 
                 switch (op->opcode()) {
                     case re2jit::inst::kUnicodeType:
-                        // chr = rejit_read_utf8(nfa->input, nfa->length);
+                        // rax = rejit_read_utf8(nfa->input, nfa->length);
                         code.push (as::rdi)
                             .mov  (as::mem(as::rdi + &NFA->length), as::rsi)
                             .mov  (as::mem(as::rdi + &NFA->input),  as::rdi)
                             .call (&rejit_read_utf8)
                             .pop  (as::rdi)
-                        // if ((len = chr >> 32) == 0) return;
+                        // if ((edx = rax >> 32) == 0) return;
                             .mov  (as::rax, as::rdx)
                             .shr  (32,      as::rdx).jmp(fail, as::zero)
-                        // if ((rejit_unicode_category(chr) & UNICODE_CATEGORY_GENERAL) != arg) return;
-                            .push (as::rdi)
-                            .push (as::rdx)
-                            .mov  (as::eax, as::edi)
-                            .call (&rejit_unicode_category)  // inlining is hard.
-                            .pop  (as::rdx)
-                            .pop  (as::rdi)
+                        // inlined: eax = rejit_unicode_category(eax) @ unicode.h
+                            .movzb(as::al,  as::ecx)
+                            .shr  (8,       as::eax)
+                            .add  (as::mem(as::p32(UNICODE_CATEGORY_1) + as::rax * 4), as::ecx)
+                            .movzb(as::mem(as::p32(UNICODE_CATEGORY_2) + as::rcx),     as::eax)
+                        // if ((eax & UNICODE_CATEGORY_GENERAL) != arg) return;
                             .and_ (UNICODE_CATEGORY_GENERAL, as::al)
-                            .cmp  (op->arg(), as::al).jmp(fail, as::not_equal)
+                            .cmp  (op->arg(), as::al).jmp(fail_likely, as::not_equal)
                         // return rejit_thread_wait(nfa, &out, len);
                             .mov  (labels[op->out()], as::rsi)
                             .jmp  (&rejit_thread_wait);
