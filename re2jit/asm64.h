@@ -14,6 +14,7 @@ namespace as
     typedef uint32_t i32;
     typedef uint64_t i64;
     typedef  int32_t s32;
+    template <typename T> static s32 p32(const T* p) { return s32(i64(p)); }
 
     enum condition : i8
     {
@@ -63,7 +64,7 @@ namespace as
         pre static inline auto operator op(a, b) -> decltype(x) { return x; }; \
         pre static inline auto operator op(b, a) -> decltype(x) { return x; }
     _commutative(template <typename T>, +, r64 a, T   b, ptr::base(a, b))
-    _commutative(template <typename T>, +, r64 a, T  *b, ptr::base(a, s32(i64(b))))
+    _commutative(template <typename T>, +, r64 a, T  *b, ptr::base(a, p32(b)))
     _commutative(template <typename T>, *, r64 a, T   b, ptr::index(a, b))
     _operator   (template <typename T>, -, r64 a, T   b, ptr::base(a, -b))
     _operator   (                     , +, r64 a, r64 b, ptr(a, b))
@@ -252,14 +253,16 @@ namespace as
         code& xor_  (r32 a, r32 b) { return rex(0, a, b).imm8(0x31).modrm(a, b)          ; }
         code& xor_  (r64 a, r64 b) { return rex(1, a, b).imm8(0x31).modrm(a, b)          ; }
 
-        // NOTE: CMOVcc: ModR/M reg1/reg2 fields are swapped compared to normal MOV.
+        // NOTE: CMOVcc and MOVZX: ModR/M reg1/reg2 fields are swapped compared to normal MOV.
         //       mov    %eax, %ecx  ->       0x89 [0xc1] (= 0b11 000 001)
         //       cmovbe %eax, %ecx  ->  0x0f 0x46 [0xc8] (= 0b11 001 000)
         // This is because mov is either r -> r/m or m -> r while cmovcc is r/m -> r.
-        code& mov(r32 a, r32 b, cnd c) { return rex(0, a, b).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }
-        code& mov(r64 a, r64 b, cnd c) { return rex(1, a, b).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }
-        code& mov(mem a, r32 b, cnd c) { return rex(0, a, b).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }
-        code& mov(mem a, r64 b, cnd c) { return rex(1, a, b).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }
+        code& mov   (r32 a, r32 b, cnd c) { return rex(0, b, a).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }
+        code& mov   (r64 a, r64 b, cnd c) { return rex(1, b, a).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }
+        code& mov   (mem a, r32 b, cnd c) { return rex(0, b, a).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }
+        code& mov   (mem a, r64 b, cnd c) { return rex(1, b, a).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }
+        code& movzb ( rb a, r32 b       ) { return rex(0, b, a).imm8(0x0f).imm8(0xb6).    modrm(b, a); }
+        code& movzb (mem a, r32 b       ) { return rex(0, b, a).imm8(0x0f).imm8(0xb6).    modrm(b, a); }
 
         // shorthands for indirect jumps to 64-bit (ok, 48-bit) pointers.
         template <typename T> code& mov   (T* p, r64 b) { return mov(i64(p), b); }
