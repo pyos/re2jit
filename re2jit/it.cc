@@ -46,7 +46,7 @@ namespace re2jit
 
         _native = new (std::nothrow) native{_bytecode};
 
-        if (_native == NULL || _native->entry == NULL || _native->state == NULL) {
+        if (_native == NULL || _native->state == NULL) {
             _error = "JIT compilation error";
             return;
         }
@@ -119,11 +119,11 @@ namespace re2jit
         nfa.input   = text.data();
         nfa.length  = text.size();
         nfa.groups  = 2 * ngroups + 2;
-        nfa.states  = _bytecode->size();
+        nfa.data    = _native;
+        nfa.space   = _native->space;
+        nfa.entry   = _native->entry;
         nfa.initial = _native->state;
-        nfa.entry   = (rejit_entry_t) _native->entry;
         nfa.flags   = flags;
-        _native->init();
 
         int *gs, r;
         rejit_thread_init(&nfa);

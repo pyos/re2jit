@@ -10,9 +10,8 @@ static constexpr const struct rejit_thread_t    *THREAD = NULL;
 
 struct re2jit::native
 {
-    void init() {}
-    const void * entry = NULL;
-    const void * state = NULL;
+    const void *state = NULL;
+    size_t space = 0;  // = 1 bit for each state reachable through multiple paths
     size_t _size = 0;
 
     native(re2::Prog *prog)
@@ -70,23 +69,13 @@ struct re2jit::native
         }
 
         // compiler pass:
-        //   emitted code is an `int(struct rejit_threadset_t* rdi, const void* rsi)`.
-        //   states are opcodes; each is an `int(struct rejit_threadset_t* rdi)`.
+        //   emitted code is a series of opcodes, each `int(struct rejit_threadset_t* rdi)`.
         //   return value is 1 iff a matching state is reachable through epsilon transitions.
+        //   first emitted opcode is the regexp's entry point.
         as::code  code;
-        as::label fail, fail_likely, /* always unlikely: */ succeed;
+        as::label fail, succeed;
         std::vector<as::label> labels(prog->size());
         std::vector<unsigned> emitted(prog->size());
-        // Intel Optimization Reference Manual, page 3-9, 3.4.1.6: Branch Selection
-        //   ...if indirect branches are common but they cannot be predicted by branch
-        //      prediction hardware, then follow the indirect branch with a UD2
-        //      instruction, which will stop the processor from decoding down the
-        //      fall-through path.
-        code.jmp(as::rsi).ud2();
-        // Intel Optimization Reference Manual, page 3-6, 3.4.1.3: Static Prediction
-        //   ...make the fall-through code following a conditional branch be the unlikely
-        //      target for a branch with a backward target.
-        code.mark(fail_likely).xor_(as::eax, as::eax).ret();
 
         DFS(emitted) {
             auto op  = prog->inst(*it);
@@ -96,11 +85,13 @@ struct re2jit::native
             code.mark(labels[*it]);
 
             // kInstFail will do `ret` anyway.
-            if (op->opcode() != re2::kInstFail && indegree[*it] > 1)
+            if (op->opcode() != re2::kInstFail && indegree[*it] > 1) {
                 // if (bit(nfa->bitmap, *it) == 1) return; bit(nfa->bitmap, *it) = 1;
                 code.mov  (as::mem(as::rdi + &NFA->bitmap), as::rsi)
-                    .test (as::i8(1 << (*it % 8)), as::mem(as::rsi + *it / 8)).jmp(fail_likely, as::not_zero)
-                    .or_  (as::i8(1 << (*it % 8)), as::mem(as::rsi + *it / 8));
+                    .test (as::i8(1 << (space % 8)), as::mem(as::rsi + space / 8)).jmp(fail, as::not_zero)
+                    .or_  (as::i8(1 << (space % 8)), as::mem(as::rsi + space / 8));
+                space++;
+            }
 
             for (auto op = ext.crbegin(); op != ext.crend(); ++op) {
                 code.mark(next_extcode);
@@ -132,7 +123,7 @@ struct re2jit::native
                             code.and_(UNICODE_CATEGORY_GENERAL, as::eax);
 
                         code.cmp  (as::i8(op->arg()), as::eax)
-                            .jmp  (fail_likely, as::not_equal)
+                            .jmp  (fail, as::not_equal)
                         // return rejit_thread_wait(nfa, &out, edx);
                             .mov  (labels[op->out()], as::rsi)
                             .jmp  (&rejit_thread_wait);
@@ -192,10 +183,6 @@ struct re2jit::native
                         .mov(as::mem(as::rdi + &NFA->input), as::rsi);
 
                     do {
-                        // Intel Optimization Reference Manual, page 3-26, 3.5.1.8:
-                        //   Break dependencies on portions of registers [...] by operating
-                        //   on 32-bit registers instead of partial registers. For moves,
-                        //   this can be accomplished [...] by using MOVZX.
                         // al = rsi[i];
                         code.movzb(as::mem(as::rsi + i++), as::eax);
 
@@ -208,11 +195,11 @@ struct re2jit::native
 
                         if (op->hi() == op->lo())
                             // if (al != lo) return;
-                            code.cmp(op->lo(), as::al).jmp(fail_likely, as::not_equal);
+                            code.cmp(op->lo(), as::al).jmp(fail, as::not_equal);
                         else
                             // if (al < lo || hi < al) return;
                             code.sub(op->lo(),            as::al)
-                                .cmp(op->hi() - op->lo(), as::al).jmp(fail_likely, as::more_u);
+                                .cmp(op->hi() - op->lo(), as::al).jmp(fail, as::more_u);
 
                         op = prog->inst(op->out());
                     } while (op != end);
@@ -284,17 +271,24 @@ struct re2jit::native
         if (m == MAP_FAILED)
             return;
 
-        entry = m;
         _size = code.size();
 
-        if (!code.write(m) || mprotect(m, _size, PROT_READ | PROT_EXEC) == -1)
+        if (!code.write(m) || mprotect(m, _size, PROT_READ | PROT_EXEC) == -1) {
+            munmap(m, _size);
             return;
+        }
 
-        state = labels[prog->start()](m);
+        state = m;
+        space = (space + 7) / 8;  // convert bytes to bits
     }
 
    ~native()
     {
-        munmap((void *) entry, _size);
+        if (state) munmap((void *) state, _size);
+    }
+
+    static void entry(struct rejit_threadset_t *nfa, const void *f)
+    {
+        return ((void (*)(struct rejit_threadset_t *)) f)(nfa);
     }
 };
