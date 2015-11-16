@@ -75,7 +75,7 @@ static struct rejit_thread_t *rejit_thread_initial(struct rejit_threadset_t *r)
 
 void rejit_thread_init(struct rejit_threadset_t *r)
 {
-    r->bitmap         = (uint8_t *) calloc(1, r->space);
+    r->bitmap         = (uint8_t *) malloc(r->space);
     r->bitmap_id      = 0;
     r->bitmap_id_last = 0;
     r->offset         = 0;
@@ -105,6 +105,13 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
     unsigned char queue = r->queue;
 
     while (1) {
+        r->bitmap_id = -1;
+
+        if (r->flags & RE2JIT_UNDEFINED)
+            // XOO < *ac was completely screwed out of memory
+            //        and nothing can fix that!!*
+            return -1;
+
         struct rejit_thread_t *t;
 
         while ((t = r->queues[queue].first) != rejit_list_end(&r->queues[queue])) {
@@ -131,11 +138,6 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
             r->free = t;
         }
 
-        if (r->flags & RE2JIT_UNDEFINED)
-            // XOO < *ac was completely screwed out of memory
-            //        and nothing can fix that!!*
-            return -1;
-
         if (!r->length) {
             if (r->all_threads.first == rejit_list_end(&r->all_threads))
                 return 0;
@@ -147,8 +149,6 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
         r->offset++;
         r->queue = queue = !queue;
         r->empty = ~0;
-
-        memset(r->bitmap, 0, r->space);
 
         if (*r->input++ == '\n')
             r->empty &= ~RE2JIT_EMPTY_BEGIN_LINE;
