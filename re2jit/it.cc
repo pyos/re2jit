@@ -104,10 +104,8 @@ namespace re2jit
                                               re2::Prog::kLongestMatch, &found, &failed, NULL);
 
                 if (!failed) {
-                    if (ngroups < 2) {
-                        *groups = found;
-                        return 1;
-                    }
+                    if (ngroups > 0) *groups = found;
+                    if (ngroups < 2) return 1;
 
                     text  = found;
                     flags = RE2JIT_ANCHOR_START | RE2JIT_ANCHOR_END;
