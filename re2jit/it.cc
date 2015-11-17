@@ -20,7 +20,7 @@
 
 namespace re2jit
 {
-    it::it(const re2::StringPiece& pattern, int max_mem)
+    it::it(const re2::StringPiece& pattern, int max_mem) : _capturing_groups(NULL)
     {
         auto pattern2 = pattern.as_string();
         auto pure_re2 = rewrite(pattern2);
@@ -70,7 +70,7 @@ namespace re2jit
         delete _bytecode;
         delete _forward;
         delete _reverse;
-        delete _capturing_groups;
+        delete _capturing_groups.load();
         if (_regexp)
             _regexp->Decref();
     }
@@ -145,11 +145,20 @@ namespace re2jit
         if (!ok() || groups->data() == NULL)
             return "";
 
-        if (_capturing_groups == NULL)
-            _capturing_groups = _regexp->CaptureNames();
+        auto p = _capturing_groups.load();
 
-        if (_capturing_groups == NULL)
-            return "";
+        if (p == NULL) {
+            p = _regexp->CaptureNames();
+            decltype(p) nullp = NULL;
+
+            if (!std::atomic_compare_exchange_strong(&_capturing_groups, &nullp, p)) {
+                delete p;
+                p = _capturing_groups.load();
+            }
+
+            if (p == NULL)
+                return "";
+        }
 
         int last = 0;
         auto end = groups++->data();
@@ -160,7 +169,7 @@ namespace re2jit
                 end  = groups->data() + groups->size();
             }
 
-        const auto it = _capturing_groups->find(last);
-        return it == _capturing_groups->end() ? "" : it->second;
+        const auto it = p->find(last);
+        return it == p->end() ? "" : it->second;
     }
 };

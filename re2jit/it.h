@@ -1,6 +1,7 @@
 #ifndef RE2JIT_IT_H
 #define RE2JIT_IT_H
 
+#include <atomic>
 #include <re2/re2.h>
 
 
@@ -63,7 +64,7 @@ namespace re2jit
             re2::Prog   *_reverse  = NULL;  // untouched with all concats reversed
             re2::Regexp *_regexp   = NULL;
             std::string  _error;
-            mutable const std::map<int, std::string> *_capturing_groups = NULL;
+            mutable std::atomic<const std::map<int, std::string> *> _capturing_groups;
     };
 };
 
