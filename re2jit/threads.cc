@@ -85,10 +85,6 @@ void rejit_thread_init(struct rejit_threadset_t *r)
     rejit_list_init(&r->all_threads);
     rejit_list_init(&r->queues[0]);
     rejit_list_init(&r->queues[1]);
-
-    if (!r->bitmap) r->flags |= RE2JIT_UNDEFINED;
-    if (!r->length) r->empty &= ~(RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT);
-
     rejit_thread_initial(r);
 }
 
@@ -104,6 +100,9 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
 {
     unsigned char queue = r->queue;
 
+    if (!r->bitmap)
+        return -1;
+
     while (1) {
         r->bitmap_id = -1;
 
@@ -111,6 +110,11 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
             // XOO < *ac was completely screwed out of memory
             //        and nothing can fix that!!*
             return -1;
+
+        if (!r->length)
+            r->empty &= ~(RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT);
+        else if (*r->input == '\n')
+            r->empty &= ~RE2JIT_EMPTY_END_LINE;
 
         struct rejit_thread_t *t;
 
@@ -147,15 +151,12 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
         }
 
         r->offset++;
+        r->length--;
         r->queue = queue = !queue;
         r->empty = ~0;
 
         if (*r->input++ == '\n')
             r->empty &= ~RE2JIT_EMPTY_BEGIN_LINE;
-        if (--r->length == 0)
-            r->empty &= ~(RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT);
-        else if (*r->input == '\n')
-            r->empty &= ~RE2JIT_EMPTY_END_LINE;
 
         // Word boundaries not supported because UTF-8.
 
