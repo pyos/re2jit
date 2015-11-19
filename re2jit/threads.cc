@@ -80,8 +80,9 @@ static struct rejit_thread_t *rejit_thread_initial(struct rejit_threadset_t *r)
 int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
 {
     unsigned char queue = 0;
+    unsigned char small_map = r->space <= sizeof(size_t);
+    size_t __bitmap;
 
-    r->bitmap         = (uint8_t *) malloc(r->space);
     r->bitmap_id_last = 0;
     r->offset         = 0;
     r->queue          = 0;
@@ -90,15 +91,16 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
     rejit_list_init(&r->threads);
     rejit_list_init(&r->queues[0]);
     rejit_list_init(&r->queues[1]);
-    rejit_thread_initial(r);
 
-    if (!r->bitmap)
+    if (small_map)
+        r->bitmap = (uint8_t *) &__bitmap;
+    else if ((r->bitmap = (uint8_t *) malloc(r->space)) == NULL)
         return -1;
 
     do {
         r->bitmap_id = -1;
 
-        if (!(r->flags & RE2JIT_ANCHOR_START) && r->offset)
+        if (!((r->flags & RE2JIT_ANCHOR_START) && r->offset))
             rejit_thread_initial(r);
 
         if (!r->length)
@@ -124,7 +126,10 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
 
             if (r->bitmap_id != q->bitmap) {
                 r->bitmap_id  = q->bitmap;
-                memset(r->bitmap, 0, r->space);
+                if (small_map)
+                    __bitmap = 0;
+                else
+                    memset(r->bitmap, 0, r->space);
             }
 
             rejit_list_remove(t = rejit_list_container(struct rejit_thread_t, queue, q));
@@ -141,7 +146,8 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
         // Word boundaries not supported because UTF-8.
     } while (r->length--);
 
-    free(r->bitmap);
+    if (!small_map)
+        free(r->bitmap);
 
     if (r->flags & RE2JIT_UNDEFINED)
         // XOO < *ac was completely screwed out of memory
