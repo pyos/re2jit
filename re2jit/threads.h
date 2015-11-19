@@ -77,15 +77,12 @@ extern "C" {
         struct rejit_thread_t *free;
         // the thread for which `entry` is currently computing an epsilon closure.
         struct rejit_thread_t *running;
-        // last thread forked off the currently running one. the next one
-        // should be inserted right after this one.
-        struct rejit_thread_t *forked;
         // function to call to compute the epsilon closure of a single state.
         // must call `rejit_thread_match` if a matching state is reachable and
         // `rejit_thread_wait` for each non-epsilon transition we can take.
-  /*8*/ void (*entry)(struct rejit_threadset_t *, const void *);
+        void (*entry)(struct rejit_threadset_t *, const void *);
         // the initial state of the automaton, duh.
-        const void *initial;
+  /*8*/ const void *initial;
         // threads in the active queue should be run, threads in the other one
         // wait until input is advanced one byte.
         RE2JIT_LIST_ROOT(struct rejit_threadq_t) queues[2];
@@ -95,12 +92,12 @@ extern "C" {
         // id of the bitmap currently in use. if a thread with a different id
         // is encountered, the bitmap must be reset because that thread
         // (and the ones it will spawn) is different from any we've already run.
- /*16*/ unsigned bitmap_id;
+        unsigned bitmap_id;
         // last assigned bitmap id. incremented each time a backreferenced
         // group matches at a new offset.
         unsigned bitmap_id_last;
         // arbitrary additional data.
-        void *data;
+ /*16*/ void *data;
     };
 
 

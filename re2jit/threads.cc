@@ -56,10 +56,10 @@ static struct rejit_thread_t *rejit_thread_fork(struct rejit_threadset_t *r)
     struct rejit_thread_t *c = r->running;
     if (t == NULL) return NULL;
 
-    rejit_list_append(r->forked, t);
+    rejit_list_append(c->prev, t);
     memcpy(t->groups, c->groups, sizeof(int) * r->groups);
     t->queue.bitmap = c->queue.bitmap;
-    return r->forked = t;
+    return c->prev = t;
 }
 
 
@@ -138,7 +138,6 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
             }
 
             r->running = t = rejit_list_container(struct rejit_thread_t, queue, q);
-            r->forked  = t->prev;
             rejit_list_remove(t);
 
             if (r->bitmap_id != q->bitmap) {
