@@ -45,23 +45,24 @@ extern "C" {
     };
 
 
+    struct rejit_threadq_t
+    {
+        /* Doubly-linked list of all threads in a single queue. */
+        RE2JIT_LIST_LINK(struct rejit_threadq_t);
+        /* If non-zero, decrement and move to the next queue instead of running. */
+        unsigned wait;
+    };
+
+
     struct rejit_thread_t
     {
         /* Doubly-linked list of all threads, ordered by descending priority.
          * When a thread forks off, it is inserted directly after its parent. */
         RE2JIT_LIST_LINK(struct rejit_thread_t);
-        /* Doubly-linked list of all threads in a single queue.
-         * Queues are rotated in and out as the input string pointer advances;
-         * see `thread_dispatch`. */
-        RE2JIT_LIST_LINK(struct rejit_thread_t) category;
-        /* Since list links point to each other, not to actual objects that contain them,
-         * and this reference is not at the beginning of `struct rejit_thread_t`,
-         * we'll have to do some pointer arithmetic. */
-        #define RE2JIT_DEREF_THREAD(ref) ((struct rejit_thread_t *)(((char *)(ref)) - offsetof(struct rejit_thread_t, category)))
+        /* The dispatch queue this thread belongs to. */
+        struct rejit_threadq_t queue;
         /* Pointer to something describing the thread's current state. */
         const void *state;
-        /* If non-zero, decrement and move to the next queue instead of running. */
-        unsigned wait;
         /* Unique identifier of the state bitmap used by this thread.
          * Threads with identical bitmap ids are guaranteed to have matched
          * all backreferenced groups at the same locations. */
@@ -107,7 +108,7 @@ extern "C" {
         const void *initial;
         /* Threads in queue with index `queue` are currently active; threads
          * in the other queue are waiting for them to read a single byte. */
-        RE2JIT_LIST_ROOT(struct rejit_thread_t) queues[2];
+        RE2JIT_LIST_ROOT(struct rejit_threadq_t) queues[2];
         /* Doubly-linked list of threads ordered by descending priority. Again.
          * There is no match iff this becomes empty at some point, and there is a match
          * iff there is exactly one thread, and it is not in any of the queues. */

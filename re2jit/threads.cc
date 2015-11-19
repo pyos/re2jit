@@ -9,7 +9,8 @@ static void rejit_thread_free_lists(struct rejit_threadset_t *r)
     struct rejit_thread_t *a, *b;
 
     #define FREE_LIST(init, end) do { \
-        for (a = init; a != end; ) {  \
+        void *__e = end;              \
+        for (a = init; a != __e; ) {  \
             b = a;                    \
             a = a->next;              \
             free(b);                  \
@@ -19,12 +20,18 @@ static void rejit_thread_free_lists(struct rejit_threadset_t *r)
     FREE_LIST(r->all_threads.first, rejit_list_end(&r->all_threads));
     #undef FREE_LIST
 
+    rejit_list_init(&r->all_threads);
+    rejit_list_init(&r->queues[0]);
+    rejit_list_init(&r->queues[1]);
     r->flags |= RE2JIT_UNDEFINED;
 }
 
 
 static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
 {
+    if (r->flags & RE2JIT_UNDEFINED)
+        return NULL;
+
     struct rejit_thread_t *t = r->free;
 
     if (t) {
@@ -63,12 +70,12 @@ static struct rejit_thread_t *rejit_thread_initial(struct rejit_threadset_t *r)
     if (t == NULL) return NULL;
 
     memset(t->groups, 255, sizeof(int) * r->groups);
-    t->wait      = 0;
-    t->bitmap_id = 0;
-    t->groups[0] = r->offset;
-    t->state     = r->initial;
+    t->queue.wait = 0;
+    t->bitmap_id  = 0;
+    t->groups[0]  = r->offset;
+    t->state      = r->initial;
     rejit_list_append(r->all_threads.last, t);
-    rejit_list_append(r->queues[r->queue].last, &t->category);
+    rejit_list_append(r->queues[r->queue].last, &t->queue);
     return t;
 }
 
@@ -112,33 +119,29 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
             if (r->all_threads.last == rejit_list_end(&r->all_threads) || r->all_threads.last->groups[1] == -1)
                 rejit_thread_initial(r);
 
-        if (r->flags & RE2JIT_UNDEFINED)
-            // XOO < *ac was completely screwed out of memory
-            //        and nothing can fix that!!*
-            return -1;
-
         if (!r->length)
             r->empty &= ~(RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT);
         else if (*r->input == '\n')
             r->empty &= ~RE2JIT_EMPTY_END_LINE;
 
-        struct rejit_thread_t *t   = r->queues[queue].first,
-                              *end = (struct rejit_thread_t *) rejit_list_end(&r->queues[queue]);
+        struct rejit_thread_t  *t;
+        struct rejit_threadq_t *q   = r->queues[queue].first;
+        struct rejit_threadq_t *end = rejit_list_end(&r->queues[queue]);
 
-        if (t == end)
+        if (q == end)
             // if this queue is empty, the next will be too, and the one after that...
             break;
 
         do {
-            t = RE2JIT_DEREF_THREAD(t);
-            rejit_list_remove(&t->category);
+            rejit_list_remove(q);
 
-            if (t->wait--) {
-                rejit_list_append(r->queues[!queue].last, &t->category);
+            if (q->wait) {
+                q->wait--;
+                rejit_list_append(r->queues[!queue].last, q);
                 continue;
             }
 
-            r->running = t;
+            r->running = t = rejit_list_container(struct rejit_thread_t, queue, q);
             r->forked  = t->prev;
             rejit_list_remove(t);
 
@@ -150,7 +153,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
             r->entry(r, t->state);
             t->next = r->free;
             r->free = t;
-        } while ((t = r->queues[queue].first) != end);
+        } while ((q = r->queues[queue].first) != end);
 
         r->input++;
         r->offset++;
@@ -158,6 +161,11 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
         r->empty = r->empty & RE2JIT_EMPTY_END_LINE ? ~0 : ~RE2JIT_EMPTY_BEGIN_LINE;
         // Word boundaries not supported because UTF-8.
     } while (r->length--);
+
+    if (r->flags & RE2JIT_UNDEFINED)
+        // XOO < *ac was completely screwed out of memory
+        //        and nothing can fix that!!*
+        return -1;
 
     if (r->all_threads.first == rejit_list_end(&r->all_threads))
         return 0;
@@ -179,7 +187,7 @@ int rejit_thread_match(struct rejit_threadset_t *r)
         // visiting other paths will not help us now.
         return 1;
 
-    rejit_list_init(&t->category);
+    rejit_list_init(&t->queue);
     t->groups[1] = r->offset;
 
     while (t->next != rejit_list_end(&r->all_threads)) {
@@ -187,7 +195,7 @@ int rejit_thread_match(struct rejit_threadset_t *r)
         // can safely fail all less important threads. If they fail, this one
         // has matched, so whatever. if they match, this one contains better results.
         rejit_list_remove(q);
-        rejit_list_remove(&q->category);
+        rejit_list_remove(&q->queue);
         q->next = r->free;
         r->free = q;
     }
@@ -200,9 +208,9 @@ int rejit_thread_wait(struct rejit_threadset_t *r, const void *state, size_t shi
 {
     struct rejit_thread_t *t = rejit_thread_fork(r);
     if (t == NULL) return 1;
-    t->state = state;
-    t->wait  = shift - 1;
-    rejit_list_append(r->queues[!r->queue].last, &t->category);
+    t->state      = state;
+    t->queue.wait = shift - 1;
+    rejit_list_append(r->queues[!r->queue].last, &t->queue);
     return 0;
 }
 
