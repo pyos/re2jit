@@ -35,7 +35,6 @@ static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
 
     if (t) {
         r->free = t->next;
-        t->next = t;
         return t;
     }
 
@@ -43,7 +42,6 @@ static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
                                        + sizeof(int) * r->groups);
 
     if (t == NULL)
-        // Well, shit.
         rejit_thread_free_lists(r);
 
     return t;
@@ -82,12 +80,10 @@ static struct rejit_thread_t *rejit_thread_initial(struct rejit_threadset_t *r)
 void rejit_thread_init(struct rejit_threadset_t *r)
 {
     r->bitmap         = (uint8_t *) malloc(r->space);
-    r->bitmap_id      = 0;
     r->bitmap_id_last = 0;
     r->offset         = 0;
     r->queue          = 0;
     r->free           = NULL;
-    r->running        = NULL;
     r->empty          = ~(RE2JIT_EMPTY_BEGIN_LINE | RE2JIT_EMPTY_BEGIN_TEXT);
     rejit_list_init(&r->threads);
     rejit_list_init(&r->queues[0]);
@@ -137,14 +133,13 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
                 continue;
             }
 
-            r->running = t = rejit_list_container(struct rejit_thread_t, queue, q);
-            rejit_list_remove(t);
-
             if (r->bitmap_id != q->bitmap) {
                 r->bitmap_id  = q->bitmap;
                 memset(r->bitmap, 0, r->space);
             }
 
+            rejit_list_remove(t = rejit_list_container(struct rejit_thread_t, queue, q));
+            r->running = t;
             r->entry(r, t->state);
             t->next = r->free;
             r->free = t;
