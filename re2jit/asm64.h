@@ -311,7 +311,7 @@ namespace as
                     // it's not possible to use rip-relative addressing in any other way.
                     return imm32((i32) m.a.add);
 
-                if (m.a.reg == r0 || m.a.reg == rsp || m.b.reg != r0) {
+                if (m.a.reg == r0 || m.a.reg.L() == rsp.L() || m.b.reg != r0) {
                     // rsp's encoding (100) in reg1 means "use SIB byte".
                     _code[ref] = (_code[ref] & ~7) | r0.L();
                     // SIB byte:
