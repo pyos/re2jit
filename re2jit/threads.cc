@@ -114,9 +114,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
         r->bitmap_id = -1;
 
         if (!(r->flags & RE2JIT_ANCHOR_START) && r->offset)
-            // don't spawn a new initial thread if we already have a match.
-            if (r->threads.last == rejit_list_end(&r->threads) || r->threads.last->groups[1] == -1)
-                rejit_thread_initial(r);
+            rejit_thread_initial(r);
 
         if (!r->length)
             r->empty &= ~(RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT);
@@ -190,14 +188,15 @@ int rejit_thread_match(struct rejit_threadset_t *r)
 
     while (t->next != rejit_list_end(&r->threads)) {
         struct rejit_thread_t *q = t->next;
-        // can safely fail all less important threads. If they fail, this one
-        // has matched, so whatever. if they match, this one contains better results.
+        // it doesn't matter what less important threads return, so why run them?
         rejit_list_remove(q);
         rejit_list_remove(&q->queue);
         q->next = r->free;
         r->free = q;
     }
 
+    // don't spawn new threads in the initial state for the same reason.
+    r->flags |= RE2JIT_ANCHOR_START;
     return 1;
 }
 
