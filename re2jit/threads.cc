@@ -9,18 +9,17 @@ static void rejit_thread_free_lists(struct rejit_threadset_t *r)
     struct rejit_thread_t *a, *b;
 
     #define FREE_LIST(init, end) do { \
-        void *__e = end;              \
-        for (a = init; a != __e; ) {  \
+        for (a = init; a != end; ) {  \
             b = a;                    \
             a = a->next;              \
             free(b);                  \
         }                             \
     } while (0)
     FREE_LIST(r->free, NULL);
-    FREE_LIST(r->all_threads.first, rejit_list_end(&r->all_threads));
+    FREE_LIST(r->threads.first, rejit_list_end(&r->threads));
     #undef FREE_LIST
 
-    rejit_list_init(&r->all_threads);
+    rejit_list_init(&r->threads);
     rejit_list_init(&r->queues[0]);
     rejit_list_init(&r->queues[1]);
     r->flags |= RE2JIT_UNDEFINED;
@@ -74,7 +73,7 @@ static struct rejit_thread_t *rejit_thread_initial(struct rejit_threadset_t *r)
     t->bitmap_id  = 0;
     t->groups[0]  = r->offset;
     t->state      = r->initial;
-    rejit_list_append(r->all_threads.last, t);
+    rejit_list_append(r->threads.last, t);
     rejit_list_append(r->queues[r->queue].last, &t->queue);
     return t;
 }
@@ -90,7 +89,7 @@ void rejit_thread_init(struct rejit_threadset_t *r)
     r->free           = NULL;
     r->running        = NULL;
     r->empty          = ~(RE2JIT_EMPTY_BEGIN_LINE | RE2JIT_EMPTY_BEGIN_TEXT);
-    rejit_list_init(&r->all_threads);
+    rejit_list_init(&r->threads);
     rejit_list_init(&r->queues[0]);
     rejit_list_init(&r->queues[1]);
     rejit_thread_initial(r);
@@ -116,7 +115,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
 
         if (!(r->flags & RE2JIT_ANCHOR_START) && r->offset)
             // don't spawn a new initial thread if we already have a match.
-            if (r->all_threads.last == rejit_list_end(&r->all_threads) || r->all_threads.last->groups[1] == -1)
+            if (r->threads.last == rejit_list_end(&r->threads) || r->threads.last->groups[1] == -1)
                 rejit_thread_initial(r);
 
         if (!r->length)
@@ -125,10 +124,9 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
             r->empty &= ~RE2JIT_EMPTY_END_LINE;
 
         struct rejit_thread_t  *t;
-        struct rejit_threadq_t *q   = r->queues[queue].first;
-        struct rejit_threadq_t *end = rejit_list_end(&r->queues[queue]);
+        struct rejit_threadq_t *q = r->queues[queue].first;
 
-        if (q == end)
+        if (q == rejit_list_end(&r->queues[queue]))
             // if this queue is empty, the next will be too, and the one after that...
             break;
 
@@ -153,7 +151,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
             r->entry(r, t->state);
             t->next = r->free;
             r->free = t;
-        } while ((q = r->queues[queue].first) != end);
+        } while ((q = r->queues[queue].first) != rejit_list_end(&r->queues[queue]));
 
         r->input++;
         r->offset++;
@@ -167,10 +165,10 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
         //        and nothing can fix that!!*
         return -1;
 
-    if (r->all_threads.first == rejit_list_end(&r->all_threads))
+    if (r->threads.first == rejit_list_end(&r->threads))
         return 0;
 
-    *groups = r->all_threads.first->groups;
+    *groups = r->threads.first->groups;
     return 1;
 }
 
@@ -190,7 +188,7 @@ int rejit_thread_match(struct rejit_threadset_t *r)
     rejit_list_init(&t->queue);
     t->groups[1] = r->offset;
 
-    while (t->next != rejit_list_end(&r->all_threads)) {
+    while (t->next != rejit_list_end(&r->threads)) {
         struct rejit_thread_t *q = t->next;
         // can safely fail all less important threads. If they fail, this one
         // has matched, so whatever. if they match, this one contains better results.

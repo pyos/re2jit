@@ -20,7 +20,7 @@ extern "C" {
     #define RE2JIT_LIST_LINK(T) union { struct { T *prev, *next;  }; struct rejit_list_link_t __list_handle[1]; }
     #define RE2JIT_LIST_ROOT(T) union { struct { T *last, *first; }; struct rejit_list_link_t __list_handle[1]; }
 
-    #define rejit_list_end(x)        (x)->first->prev
+    #define rejit_list_end(x)        (void *) (x)->__list_handle
     #define rejit_list_init(x)       __rejit_list_init((x)->__list_handle)
     #define rejit_list_append(x, y)  __rejit_list_append((x)->__list_handle, (y)->__list_handle)
     #define rejit_list_remove(x)     __rejit_list_remove((x)->__list_handle)
