@@ -75,7 +75,8 @@ static struct rejit_thread_t *rejit_thread_initial(struct rejit_threadset_t *r)
 
 void rejit_thread_init(struct rejit_threadset_t *r)
 {
-    r->bitmap         = (uint8_t *) malloc(r->space);
+    r->bitmap         = RE2JIT_BITMAP_IS_RAW(r->space) ? NULL : (uint8_t *) malloc(r->space);
+    r->bitmap_raw     = 0;
     r->bitmap_id      = 0;
     r->bitmap_id_last = 0;
     r->offset         = 0;
@@ -100,7 +101,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
 {
     unsigned char queue = r->queue;
 
-    if (!r->bitmap)
+    if (!RE2JIT_BITMAP_IS_RAW(r->space) && !r->bitmap)
         return -1;
 
     while (1) {
@@ -134,7 +135,9 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
 
             if (r->bitmap_id != t->bitmap_id) {
                 r->bitmap_id  = t->bitmap_id;
-                memset(r->bitmap, 0, r->space);
+                r->bitmap_raw = 0;
+                if (!RE2JIT_BITMAP_IS_RAW(r->space))
+                    memset(r->bitmap, 0, r->space);
             }
 
             r->entry(r, t->state);
@@ -209,6 +212,7 @@ int rejit_thread_wait(struct rejit_threadset_t *r, const void *state, size_t shi
 struct _bitmap
 {
     unsigned old_id;
+    size_t   old_raw;
     uint8_t *old_map;
     uint8_t  bitmap[0];
 };
@@ -224,9 +228,11 @@ int rejit_thread_bitmap_save(struct rejit_threadset_t *r)
     }
 
     memset(s->bitmap, 0, r->space);
-    s->old_id  = r->running->bitmap_id;
-    s->old_map = r->bitmap;
-    r->bitmap  = s->bitmap;
+    s->old_id     = r->running->bitmap_id;
+    s->old_raw    = r->bitmap_raw;
+    s->old_map    = r->bitmap;
+    r->bitmap     = s->bitmap;
+    r->bitmap_raw = 0;
     r->running->bitmap_id = ++r->bitmap_id_last;
     return 1;
 }
@@ -235,7 +241,8 @@ int rejit_thread_bitmap_save(struct rejit_threadset_t *r)
 void rejit_thread_bitmap_restore(struct rejit_threadset_t *r)
 {
     struct _bitmap *s = (struct _bitmap *) (r->bitmap - offsetof(struct _bitmap, bitmap));
-    r->bitmap = s->old_map;
+    r->bitmap     = s->old_map;
+    r->bitmap_raw = s->old_raw;
     r->running->bitmap_id = s->old_id;
     free(s);
 }

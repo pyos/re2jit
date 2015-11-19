@@ -68,6 +68,12 @@ struct re2jit::native
             }
         }
 
+        size_t total_space = 0;
+        for (auto i : indegree)
+            if (i > 1)
+                total_space++;
+        bool bitmap_is_raw = RE2JIT_BITMAP_IS_RAW((total_space + 7) / 8);
+
         // compiler pass:
         //   emitted code is a series of opcodes, each `int(struct rejit_threadset_t* rdi)`.
         //   return value is 1 iff a matching state is reachable through epsilon transitions.
@@ -86,10 +92,14 @@ struct re2jit::native
 
             // kInstFail will do `ret` anyway.
             if (op->opcode() != re2::kInstFail && indegree[*it] > 1) {
-                // if (bit(nfa->bitmap, *it) == 1) return; bit(nfa->bitmap, *it) = 1;
-                code.mov  (as::mem(as::rdi + &NFA->bitmap), as::rsi)
-                    .test (as::i8(1 << (space % 8)), as::mem(as::rsi + space / 8)).jmp(fail, as::not_zero)
-                    .or_  (as::i8(1 << (space % 8)), as::mem(as::rsi + space / 8));
+                if (bitmap_is_raw)
+                    code.test (as::i8(1 << (space % 8)), as::mem(as::rdi + &NFA->bitmap_raw + space / 8)).jmp(fail, as::not_zero)
+                        .or_  (as::i8(1 << (space % 8)), as::mem(as::rdi + &NFA->bitmap_raw + space / 8));
+                else
+                    // if (bit(nfa->bitmap, *it) == 1) return; bit(nfa->bitmap, *it) = 1;
+                    code.mov  (as::mem(as::rdi + &NFA->bitmap), as::rsi)
+                        .test (as::i8(1 << (space % 8)), as::mem(as::rsi + space / 8)).jmp(fail, as::not_zero)
+                        .or_  (as::i8(1 << (space % 8)), as::mem(as::rsi + space / 8));
                 space++;
             }
 

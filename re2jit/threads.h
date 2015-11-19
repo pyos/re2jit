@@ -94,6 +94,10 @@ extern "C" {
         /* A bitmap that may be used to mark visited states. It is reset
          * automatically every time the input pointer advances. */
         uint8_t *bitmap;
+        // If at most `sizeof(size_t)` bytes are needed for the bitmap, avoid
+        // additional overhead from memory management.
+        #define RE2JIT_BITMAP_IS_RAW(s) ((s) <= sizeof(size_t))
+        size_t   bitmap_raw;
         /* Linked list of failed threads. These can be reused to avoid allocations. */
         struct rejit_thread_t *free;
         /* Currently active thread, set by `thread_dispatch`. */
