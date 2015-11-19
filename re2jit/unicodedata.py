@@ -86,7 +86,7 @@ writeinto(os.path.join(os.path.dirname(__file__), 'unicodedata.h'),
             _rejit_uni_cat_id_t
            *_rejit_uni_cat_id(const char *, unsigned int);
     #ifdef __cplusplus
-    }};
+    }}
     #endif
 
     #endif

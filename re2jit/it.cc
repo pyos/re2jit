@@ -172,4 +172,4 @@ namespace re2jit
         const auto it = p->find(last);
         return it == p->end() ? "" : it->second;
     }
-};
+}

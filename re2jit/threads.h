@@ -70,7 +70,7 @@ extern "C" {
          * Subgroup N matched the substring indexed by [groups[2N]:groups[2N+1]).
          * Subgroup 0 is special -- it is the whole match. Unmatched subgroups
          * have at least one boundary set to -1. */
-        int groups[0];
+        int groups[];
     };
 
 
@@ -155,7 +155,7 @@ extern "C" {
     void rejit_thread_bitmap_restore(struct rejit_threadset_t *);
 
 #ifdef __cplusplus
-};
+}
 #endif
 
 

@@ -66,7 +66,7 @@ namespace re2jit
             std::string  _error;
             mutable std::atomic<const std::map<int, std::string> *> _capturing_groups;
     };
-};
+}
 
 
 #endif

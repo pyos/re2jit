@@ -1,7 +1,9 @@
 #ifndef RE2JIT_UNICODE_H
 #define RE2JIT_UNICODE_H
 
+#ifdef __cplusplus
 extern "C" {
+#endif
     #include <stdint.h>
     #include "unicodedata.h"
 
@@ -42,6 +44,8 @@ extern "C" {
         #undef _UTF8_MCHR
         #undef _UTF8_CONT
     }
-};
+#ifdef __cplusplus
+}
+#endif
 
 #endif

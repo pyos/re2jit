@@ -171,6 +171,6 @@ namespace re2jit
     {
         return in->opcode() == re2::kInstByteRange && in->hi() == 0xF3 && in->lo() == 0xF3;
     }
-};
+}
 
 #endif

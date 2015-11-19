@@ -61,7 +61,7 @@ namespace as
     #define _operator(pre, op, a, b, x) \
         pre static inline auto operator op(a, b) -> decltype(x) { return x; }
     #define _commutative(pre, op, a, b, x) \
-        pre static inline auto operator op(a, b) -> decltype(x) { return x; }; \
+        pre static inline auto operator op(a, b) -> decltype(x) { return x; } \
         pre static inline auto operator op(b, a) -> decltype(x) { return x; }
     _commutative(template <typename T>, +, r64 a, T   b, ptr::base(a, b))
     _commutative(template <typename T>, +, r64 a, T  *b, ptr::base(a, p32(b)))
@@ -344,6 +344,6 @@ namespace as
                 return imm32((i32) m.a.add);
             }
     };
-};
+}
 
 #endif
