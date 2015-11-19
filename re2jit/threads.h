@@ -101,14 +101,14 @@ extern "C" {
     };
 
 
-    /* Finish initialization of an NFA. `input`, `length`, `groups`, `flags`, `space`,
-     * `entry`, and `initial` must be set prior to calling this. */
-    void rejit_thread_init(struct rejit_threadset_t *);
-    void rejit_thread_free(struct rejit_threadset_t *);
-
     /* Run the NFA. Returns -1 if ran out of memory, 0 if failed, and 1 if matched,
-     * in which case the provided pointer will be set to an array of group boundaries. */
+     * in which case the provided pointer will be set to an array of group boundaries.
+     * `input`, `length`, `groups`, `flags`, `space`, `entry`, and `initial`
+     * must be set prior to calling this. */
     int rejit_thread_dispatch(struct rejit_threadset_t *, int **);
+
+    /* Release any lingering threads. The array returned by dispatch becomes invalid. */
+    void rejit_thread_free(struct rejit_threadset_t *);
 
     /* Claim that the currently running thread has matched the input string.
      * Returns 1 if there is no point in following the remaining epsilon transitions. */

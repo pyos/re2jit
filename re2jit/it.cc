@@ -124,7 +124,6 @@ namespace re2jit
         nfa.flags   = flags;
 
         int *gs, r;
-        rejit_thread_init(&nfa);
         r = rejit_thread_dispatch(&nfa, &gs);
 
         if (r == 1)

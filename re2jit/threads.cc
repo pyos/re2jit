@@ -4,7 +4,7 @@
 #include "threads.h"
 
 
-static void rejit_thread_free_lists(struct rejit_threadset_t *r)
+void rejit_thread_free(struct rejit_threadset_t *r)
 {
     struct rejit_thread_t *a, *b;
 
@@ -42,7 +42,7 @@ static struct rejit_thread_t *rejit_thread_acquire(struct rejit_threadset_t *r)
                                        + sizeof(int) * r->groups);
 
     if (t == NULL)
-        rejit_thread_free_lists(r);
+        rejit_thread_free(r);
 
     return t;
 }
@@ -77,8 +77,10 @@ static struct rejit_thread_t *rejit_thread_initial(struct rejit_threadset_t *r)
 }
 
 
-void rejit_thread_init(struct rejit_threadset_t *r)
+int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
 {
+    unsigned char queue = 0;
+
     r->bitmap         = (uint8_t *) malloc(r->space);
     r->bitmap_id_last = 0;
     r->offset         = 0;
@@ -89,19 +91,6 @@ void rejit_thread_init(struct rejit_threadset_t *r)
     rejit_list_init(&r->queues[0]);
     rejit_list_init(&r->queues[1]);
     rejit_thread_initial(r);
-}
-
-
-void rejit_thread_free(struct rejit_threadset_t *r)
-{
-    rejit_thread_free_lists(r);
-    free(r->bitmap);
-}
-
-
-int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
-{
-    unsigned char queue = r->queue;
 
     if (!r->bitmap)
         return -1;
@@ -151,6 +140,8 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
         r->empty = r->empty & RE2JIT_EMPTY_END_LINE ? ~0 : ~RE2JIT_EMPTY_BEGIN_LINE;
         // Word boundaries not supported because UTF-8.
     } while (r->length--);
+
+    free(r->bitmap);
 
     if (r->flags & RE2JIT_UNDEFINED)
         // XOO < *ac was completely screwed out of memory
@@ -219,7 +210,7 @@ int rejit_thread_bitmap_save(struct rejit_threadset_t *r)
     struct _bitmap *s = (struct _bitmap *) malloc(sizeof(struct _bitmap) + r->space);
 
     if (s == NULL) {
-        rejit_thread_free_lists(r);
+        rejit_thread_free(r);
         return 0;
     }
 
