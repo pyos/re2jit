@@ -79,6 +79,7 @@ void rejit_thread_init(struct rejit_threadset_t *r)
     r->bitmap_id      = 0;
     r->bitmap_id_last = 0;
     r->offset         = 0;
+    r->queue          = 0;
     r->free           = NULL;
     r->running        = NULL;
     r->empty          = ~(RE2JIT_EMPTY_BEGIN_LINE | RE2JIT_EMPTY_BEGIN_TEXT);
