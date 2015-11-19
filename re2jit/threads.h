@@ -35,6 +35,9 @@ extern "C" {
         RE2JIT_LIST_LINK(struct rejit_threadq_t);
         // if non-zero, decrement and move to the next queue; don't run.
         unsigned wait;
+        // threads with different bitmap ids may have matched some backreferenced groups
+        // at different locations and should never be considered equal.
+        unsigned bitmap;
     };
 
 
@@ -44,9 +47,6 @@ extern "C" {
         struct rejit_threadq_t queue;
         // actual meaning of state determined by closure computation algorithm used.
         const void *state;
-        // threads with different bitmap ids may have matched some backreferenced groups
-        // at different locations and should never be considered equal.
-        unsigned bitmap_id;
         // group `i` spans the input from `groups[2i]`-th character to `groups[2i+1]`-th.
         // if either bound is -1, the group did not match. 0-th group is the whole match.
         int groups[];

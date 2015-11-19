@@ -58,7 +58,7 @@ static struct rejit_thread_t *rejit_thread_fork(struct rejit_threadset_t *r)
 
     rejit_list_append(r->forked, t);
     memcpy(t->groups, c->groups, sizeof(int) * r->groups);
-    t->bitmap_id = c->bitmap_id;
+    t->queue.bitmap = c->queue.bitmap;
     return r->forked = t;
 }
 
@@ -69,10 +69,10 @@ static struct rejit_thread_t *rejit_thread_initial(struct rejit_threadset_t *r)
     if (t == NULL) return NULL;
 
     memset(t->groups, 255, sizeof(int) * r->groups);
-    t->queue.wait = 0;
-    t->bitmap_id  = 0;
-    t->groups[0]  = r->offset;
-    t->state      = r->initial;
+    t->queue.wait   = 0;
+    t->queue.bitmap = 0;
+    t->groups[0]    = r->offset;
+    t->state        = r->initial;
     rejit_list_append(r->threads.last, t);
     rejit_list_append(r->queues[r->queue].last, &t->queue);
     return t;
@@ -143,8 +143,8 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
             r->forked  = t->prev;
             rejit_list_remove(t);
 
-            if (r->bitmap_id != t->bitmap_id) {
-                r->bitmap_id  = t->bitmap_id;
+            if (r->bitmap_id != q->bitmap) {
+                r->bitmap_id  = q->bitmap;
                 memset(r->bitmap, 0, r->space);
             }
 
@@ -231,10 +231,10 @@ int rejit_thread_bitmap_save(struct rejit_threadset_t *r)
     }
 
     memset(s->bitmap, 0, r->space);
-    s->old_id  = r->running->bitmap_id;
+    s->old_id  = r->running->queue.bitmap;
     s->old_map = r->bitmap;
     r->bitmap  = s->bitmap;
-    r->running->bitmap_id = ++r->bitmap_id_last;
+    r->running->queue.bitmap = ++r->bitmap_id_last;
     return 1;
 }
 
@@ -243,6 +243,6 @@ void rejit_thread_bitmap_restore(struct rejit_threadset_t *r)
 {
     struct _bitmap *s = (struct _bitmap *) (r->bitmap - offsetof(struct _bitmap, bitmap));
     r->bitmap = s->old_map;
-    r->running->bitmap_id = s->old_id;
+    r->running->queue.bitmap = s->old_id;
     free(s);
 }
