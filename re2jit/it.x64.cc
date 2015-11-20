@@ -34,14 +34,14 @@ struct re2jit::native
 
         DFS(indegree) {
             auto op  = prog->inst(*it);
-            auto ext = re2jit::is_extcode(prog, op);
+            auto ext = re2jit::get_extcode(prog, op);
 
-            for (auto& op : ext) switch (op.opcode()) {
-                case re2jit::inst::kBackReference:
-                    backrefs.insert(op.arg());
+            for (auto& op : ext) switch (op.opcode) {
+                case re2jit::kBackreference:
+                    backrefs.insert(op.arg);
 
                 default:
-                    VISIT(op.out());
+                    VISIT(op.out);
             }
 
             if (!ext.size()) switch (op->opcode()) {
@@ -62,7 +62,7 @@ struct re2jit::native
                     do  // non-extcode byte ranges are concatenated into one block of code
                         // => intermediate insts are unreachable by themselves
                         op = prog->inst(i = op->out());
-                    while (op->opcode() == re2::kInstByteRange && !re2jit::maybe_extcode(op));
+                    while (op->opcode() == re2::kInstByteRange && !re2jit::is_extcode(prog, op));
 
                     VISIT(i);
             }
@@ -79,7 +79,7 @@ struct re2jit::native
 
         DFS(emitted) {
             auto op  = prog->inst(*it);
-            auto ext = re2jit::is_extcode(prog, op);
+            auto ext = re2jit::get_extcode(prog, op);
             as::label next_extcode;
 
             code.mark(labels[*it]);
@@ -101,9 +101,9 @@ struct re2jit::native
                         .call(next_extcode = as::label())
                         .pop (as::rdi);
 
-                switch (op->opcode()) {
-                    case re2jit::inst::kUnicodeGeneralType:
-                    case re2jit::inst::kUnicodeSpecificType:
+                switch (op->opcode) {
+                    case re2jit::kUnicodeTypeGeneral:
+                    case re2jit::kUnicodeTypeSpecific:
                         // rax = rejit_read_utf8(nfa->input, nfa->length);
                         code.push (as::rdi)
                             .mov  (as::mem(as::rdi + &NFA->length), as::rsi)
@@ -119,28 +119,28 @@ struct re2jit::native
                             .add  (as::mem(as::p32(UNICODE_CATEGORY_1) + as::rax * 4), as::ecx)
                             .movzb(as::mem(as::p32(UNICODE_CATEGORY_2) + as::rcx),     as::eax);
 
-                        if (op->opcode() == re2jit::inst::kUnicodeGeneralType)
+                        if (op->opcode == re2jit::kUnicodeTypeGeneral)
                             code.and_(UNICODE_CATEGORY_GENERAL, as::eax);
 
-                        code.cmp  (as::i8(op->arg()), as::eax)
+                        code.cmp  (as::i8(op->arg), as::eax)
                             .jmp  (fail, as::not_equal)
                         // return rejit_thread_wait(nfa, &out, edx);
-                            .mov  (labels[op->out()], as::rsi)
+                            .mov  (labels[op->out], as::rsi)
                             .jmp  (&rejit_thread_wait);
-                        VISIT(op->out());
+                        VISIT(op->out);
                         break;
 
-                    case re2jit::inst::kBackReference:
+                    case re2jit::kBackreference:
                         // if (nfa->groups <= arg * 2) return;
-                        code.cmp(as::i32(op->arg() * 2), as::mem(as::rdi + &NFA->groups))
+                        code.cmp(as::i32(op->arg * 2), as::mem(as::rdi + &NFA->groups))
                             .jmp(fail, as::less_equal_u)
                         // if (start < 0 || end < start) return; if (end == start) goto empty;
                             .mov (as::mem(as::rdi + &NFA->running), as::rsi)
-                            .mov (as::mem(as::rsi + &THREAD->groups[op->arg() * 2 + 1]), as::ecx)
-                            .mov (as::mem(as::rsi + &THREAD->groups[op->arg() * 2]),     as::esi)
+                            .mov (as::mem(as::rsi + &THREAD->groups[op->arg * 2 + 1]), as::ecx)
+                            .mov (as::mem(as::rsi + &THREAD->groups[op->arg * 2]),     as::esi)
                             .test(as::esi, as::esi).jmp(fail, as::negative)
                             .sub (as::esi, as::ecx).jmp(fail, as::less)
-                            .jmp (labels[op->out()], as::equal)
+                            .jmp (labels[op->out], as::equal)
                         // if (nfa->length < end - start) return;
                             .cmp(as::rcx, as::mem(as::rdi + &NFA->length)).jmp(fail, as::less_u)
                         // if (memcmp(nfa->input, nfa->input + start - nfa->offset, end - start)) return;
@@ -151,9 +151,9 @@ struct re2jit::native
                             .mov (as::ecx, as::edx)
                             .repz().cmpsb().pop(as::rdi).jmp(fail, as::not_equal)
                         // return rejit_thread_wait(nfa, &out, end - start);
-                            .mov (labels[op->out()], as::rsi)
+                            .mov (labels[op->out], as::rsi)
                             .jmp (&rejit_thread_wait);
-                        VISIT(op->out());
+                        VISIT(op->out);
                         break;
                 }
             }
@@ -176,7 +176,7 @@ struct re2jit::native
 
                     do
                         len++, end = prog->inst(r = end->out());
-                    while (end->opcode() == re2::kInstByteRange && !re2jit::maybe_extcode(end));
+                    while (end->opcode() == re2::kInstByteRange && !re2jit::is_extcode(prog, end));
 
                     // if (nfa->length < len) return; else rsi = nfa->input;
                     code.cmp(as::i32(len), as::mem(as::rdi + &NFA->length)).jmp(fail, as::less_u)

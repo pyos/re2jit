@@ -14,9 +14,9 @@ struct re2jit::native
                             , space((prog->size() + 7) / 8)
     {
         for (int i = 0; i < prog->size(); i++)
-            for (auto op : re2jit::is_extcode(prog, prog->inst(i)))
-                if (op.opcode() == re2jit::inst::kBackReference)
-                    _backrefs.insert(op.arg());
+            for (auto op : re2jit::get_extcode(prog, prog->inst(i)))
+                if (op.opcode == re2jit::kBackreference)
+                    _backrefs.insert(op.arg);
     }
 
     static void entry(struct rejit_threadset_t *nfa, const void *state)
@@ -30,12 +30,12 @@ struct re2jit::native
 
         nfa->bitmap[i / 8] |= 1 << (i % 8);
 
-        auto ext = re2jit::is_extcode(st->_prog, op);
+        auto ext = re2jit::get_extcode(st->_prog, op);
 
-        for (auto& op : ext) switch (op.opcode())
+        for (auto& op : ext) switch (op.opcode)
         {
-            case re2jit::inst::kUnicodeGeneralType:
-            case re2jit::inst::kUnicodeSpecificType: {
+            case re2jit::kUnicodeTypeGeneral:
+            case re2jit::kUnicodeTypeSpecific: {
                 uint64_t x = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length);
 
                 if (!x)
@@ -43,29 +43,28 @@ struct re2jit::native
 
                 uint8_t cls = rejit_unicode_category((uint32_t) x);
 
-                if (op.opcode() == re2jit::inst::kUnicodeGeneralType) {
-                    if ((cls & UNICODE_CATEGORY_GENERAL) != op.arg())
-                        break;
-                }
-                else if (cls != op.arg())
+                if (op.opcode == re2jit::kUnicodeTypeGeneral)
+                    cls &= UNICODE_CATEGORY_GENERAL;
+
+                if (cls != op.arg)
                     break;
 
-                rejit_thread_wait(nfa, st->_prog->inst(op.out()), x >> 32);
+                rejit_thread_wait(nfa, st->_prog->inst(op.out), x >> 32);
                 break;
             }
 
-            case re2jit::inst::kBackReference: {
-                if (op.arg() * 2 >= nfa->groups)
+            case re2jit::kBackreference: {
+                if (op.arg * 2 >= nfa->groups)
                     break;
 
-                int start = nfa->running->groups[op.arg() * 2];
-                int end   = nfa->running->groups[op.arg() * 2 + 1];
+                int start = nfa->running->groups[op.arg * 2];
+                int end   = nfa->running->groups[op.arg * 2 + 1];
 
                 if (start == -1 || end < start)
                     break;
 
                 if (start == end) {
-                    entry(nfa, st->_prog->inst(op.out()));
+                    entry(nfa, st->_prog->inst(op.out));
                     break;
                 }
 
@@ -75,7 +74,7 @@ struct re2jit::native
                 if (memcmp(nfa->input, nfa->input - nfa->offset + start, end - start))
                     break;
 
-                rejit_thread_wait(nfa, st->_prog->inst(op.out()), end - start);
+                rejit_thread_wait(nfa, st->_prog->inst(op.out), end - start);
                 break;
             }
         }
