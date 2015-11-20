@@ -205,19 +205,19 @@ int rejit_thread_wait(struct rejit_threadset_t *r, const void *state, size_t shi
 
 struct _bitmap
 {
-    unsigned old_id;
     uint8_t *old_map;
-    uint8_t  bitmap[0];
+    unsigned old_id;
+    uint8_t  bitmap[];
 };
 
 
-int rejit_thread_bitmap_save(struct rejit_threadset_t *r)
+void rejit_thread_bitmap_save(struct rejit_threadset_t *r)
 {
     struct _bitmap *s = (struct _bitmap *) malloc(sizeof(struct _bitmap) + r->space);
 
     if (s == NULL) {
         rejit_thread_free(r);
-        return 0;
+        return;
     }
 
     memset(s->bitmap, 0, r->space);
@@ -225,7 +225,6 @@ int rejit_thread_bitmap_save(struct rejit_threadset_t *r)
     s->old_map = r->bitmap;
     r->bitmap  = s->bitmap;
     r->running->queue.bitmap = ++r->bitmap_id_last;
-    return 1;
 }
 
 

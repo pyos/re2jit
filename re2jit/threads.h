@@ -121,7 +121,7 @@ extern "C" {
     /* Save the current state bitmap and create a new, zero-filled one
      * because there was some change in state that is impossible to record
      * (thus revisiting states we've already seen may be worthwhile.) */
-    int rejit_thread_bitmap_save(struct rejit_threadset_t *);
+    void rejit_thread_bitmap_save(struct rejit_threadset_t *);
 
     /* Restore a previously saved bitmap because we've reverted to the previous state. */
     void rejit_thread_bitmap_restore(struct rejit_threadset_t *);
