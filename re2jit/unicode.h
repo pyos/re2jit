@@ -11,7 +11,7 @@ extern "C" {
     static inline const uint8_t *rejit_unicode_category_id(const char *s, int sz)
     {
         const _rejit_uni_cat_id_t *p = _rejit_uni_cat_id(s, sz);
-        return p->name ? &p->id : NULL;
+        return p && p->name ? &p->id : NULL;
     }
 
     /* Return a character's specific category. `&` with UNICODE_CATEGORY_GENERAL
