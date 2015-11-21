@@ -25,7 +25,7 @@ is equivalent to `[\pL\pN_]`), it may be up to 100x faster than re2 because re2j
 implementation of `\p{X}` matches a whole code point using a lookup table instead of
 unwrapping, for example, `\pL` into `[enumeration of all letters in Unicode]` as re2
 itself does. Just run `make test/30-long ENABLE_PERF_TESTS=1` to see how good it is
-[at tokeinizing dg](https://github.com/pyos/dg/blob/master/core/3.parser.dg#L35)
+[at tokenizing dg](https://github.com/pyos/dg/blob/master/core/3.parser.dg#L35)
 (the regexp for which contains the aforementioned Pythonic `\w`.)
 
 **Other than that**, hard to say. Just roll some benchmarks of your own, will you?
@@ -57,12 +57,13 @@ And while that does not guarantee polynomial time in worst case...
    of a state, a position in an input string, and offsets for the start and end of each
    relevant group.)
 
- * **If, however, a backreferenced groups is repeated**, all bets are off.
+ * **If, however, a backreferenced group is repeated**, all bets are off.
    The regexp `(x*)*\1` requires exponential time to match. An equivalent regexp
    `(x*)*` (it is equivalent because the last match of `x*` is always an empty string)
    does not, as it contains no backreferences. Likewise, ``(`).*?\1(x*)*`` is O(n^3)
    because only ``(`)`` is backreferenced, not `(x*)`, while `(x*)\1` is also O(n^3)
-   as `(x*)` only matches once this time.
+   as `(x*)` only matches once this time. Or O(n^2) if it is anchored at the beginning
+   of the input.
 
 Note, however, that since re2 does not support backreferences, it's not possible
 to use its DFA to run unanchored searches with regexps that contain any. So an unanchored
