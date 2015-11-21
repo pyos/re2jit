@@ -27,3 +27,6 @@ MATCH_TEST("^x$", UNANCHORED, "x", 0);
 MATCH_TEST("^x$", UNANCHORED, "xyz", 0);
 MATCH_TEST("^x$", UNANCHORED, "uvwx", 0);
 MATCH_TEST("^x$", UNANCHORED, "uvwxyz", 0);
+
+MATCH_TEST("(?m)$", ANCHOR_START, "\n matches", 0);
+MATCH_TEST("(?m)$", ANCHOR_START, "does not match", 0);
