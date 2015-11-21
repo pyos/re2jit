@@ -2,7 +2,16 @@
 
 A compiler for [re2](https://github.com/google/re2/) regexps.
 
-### So...how fast is it?
+### What?
+
+Do you know what Thompson's NFA construction is? Have you read the original paper?
+It compiled regexps into asm code for an IBM mainframe, which is the sort of thing
+[people in the 60's did](http://www.diku.dk/hjemmesider/ansatte/henglein/papers/thompson1968.pdf).
+Now, a modern implementation of the same technique (re2) adopts a
+[virtual machine approach](https://swtch.com/~rsc/regexp/regexp2.html) instead. Which is,
+obviously, slower. Slower than Python on some regexps! We can do better than that.
+
+### So...how fast is this thing?
 
 Depends.
 
@@ -34,7 +43,7 @@ itself does. Just run `make test/30-long ENABLE_PERF_TESTS=1` to see how good it
 
 Backreferences are supported. And no, don't go all "hey, I read on Stack Overflow
 that backreferences require backtracking".
-[Here's Russ Cox's opinion on the matter](https://swtch.com/~rsc/regexp/regexp2.html):
+[Here's Russ Cox's opinion on the matter](https://swtch.com/~rsc/regexp/regexp2.html#real):
 
 >Backreferences are trivial in backtracking implementations. **In Pike's VM, they can be
 >accommodated, except that the argument about discarding threads with duplicate PCs no
