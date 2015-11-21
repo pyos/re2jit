@@ -8,13 +8,11 @@
 
 
 #if RE2JIT_VM
-    #pragma message "target = NFA interpreter"
     #include "it.vm.cc"
 #elif __x86_64__
-    #pragma message "target = x86_64 System V ABI"
     #include "it.x64.cc"
 #else
-    #pragma message "target = ??? [try ENABLE_VM=1]"
+    #error "unsupported target platform, try ENABLE_VM=1"
 #endif
 
 
@@ -100,15 +98,14 @@ namespace re2jit
                 if (!matched) return 0;
                 if (!ngroups) return 1;
 
-                failed = !_reverse->SearchDFA(found, text, re2::Prog::kAnchored,
-                                              re2::Prog::kLongestMatch, &found, &failed, NULL);
+                matched = !_reverse->SearchDFA(found, text, re2::Prog::kAnchored,
+                                               re2::Prog::kLongestMatch, &found, &failed, NULL);
 
-                if (!failed) {
-                    if (ngroups > 0) *groups = found;
-                    if (ngroups < 2) return 1;
-
-                    text  = found;
+                if (!failed && matched) {
+                    text  = groups[0] = found;
                     flags = RE2JIT_ANCHOR_START | RE2JIT_ANCHOR_END;
+
+                    if (ngroups < 2) return 1;
                 }
             }
         }
@@ -123,12 +120,11 @@ namespace re2jit
         nfa.initial = _native->state;
         nfa.flags   = flags;
 
-        int *gs, r;
-        r = rejit_thread_dispatch(&nfa, &gs);
+        int *gs, r = rejit_thread_dispatch(&nfa, &gs);
 
         if (r == 1)
             for (int i = 0; i < ngroups; i++, gs += 2) {
-                if (gs[1] == -1)
+                if (gs[1] < 0)
                     groups[i].set((const char *) NULL, 0);
                 else
                     groups[i].set(text.data() + gs[0], gs[1] - gs[0]);
@@ -141,21 +137,17 @@ namespace re2jit
 
     std::string it::lastgroup(const re2::StringPiece *groups, int ngroups) const
     {
-        if (!ok() || groups->data() == NULL)
+        if (!ok() || ngroups < 2 || groups->data() == NULL)
             return "";
 
         auto p = _capturing_groups.load();
 
         if (p == NULL) {
-            p = _regexp->CaptureNames();
-            decltype(p) nullp = NULL;
+            auto q = _regexp->CaptureNames();
 
-            if (!std::atomic_compare_exchange_strong(&_capturing_groups, &nullp, p)) {
-                delete p;
-                p = _capturing_groups.load();
-            }
-
-            if (p == NULL)
+            if (!_capturing_groups.compare_exchange_strong(p, q))
+                delete q;
+            else if ((p = q) == NULL)
                 return "";
         }
 

@@ -51,8 +51,8 @@ namespace re2jit
          *
          * @param ngroups: length of `groups`.
          *
-         * @return: the name of the group, "" if no group matched or the outermost
-         *          matching group has no name (i.e. is not a `(?P<name>...)` group).
+         * @return: the name of the group, or "" if no group matched or the outermost
+         *          matching group has no name.
          *
          */
         std::string lastgroup(const re2::StringPiece *groups, int ngroups) const;

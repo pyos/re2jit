@@ -57,14 +57,12 @@ struct re2jit::native
                     break;
 
                 case re2::kInstByteRange:
-                    size_t i;
-
                     do  // non-extcode byte ranges are concatenated into one block of code
                         // => intermediate insts are unreachable by themselves
-                        op = prog->inst(i = op->out());
+                        op = prog->inst(op->out());
                     while (op->opcode() == re2::kInstByteRange && !re2jit::is_extcode(prog, op));
 
-                    VISIT(i);
+                    VISIT(op->id(prog));
             }
         }
 
@@ -112,10 +110,11 @@ struct re2jit::native
                             .pop  (as::rdi)
                         // if ((edx = rax >> 32) == 0) return;
                             .mov  (as::rax, as::rdx)
-                            .shr  (32,      as::rdx).jmp(fail, as::zero)
+                            .shr  (24,      as::rdx).jmp(fail, as::zero)
                         // inlined: eax = rejit_unicode_category(eax) @ unicode.h
-                            .movzb(as::al,  as::ecx)
-                            .shr  (8,       as::eax)
+                            .movzb(as::al,    as::ecx)
+                            .and_ (0x1FFFFFu, as::eax)
+                            .shr  (8,         as::eax)
                             .add  (as::mem(as::p32(UNICODE_CATEGORY_1) + as::rax * 4), as::ecx)
                             .movzb(as::mem(as::p32(UNICODE_CATEGORY_2) + as::rcx),     as::eax);
 
@@ -245,8 +244,6 @@ struct re2jit::native
                     // if (nfa->empty & empty) return;
                     code.test(as::i8(op->empty()), as::mem(as::rdi + &NFA->empty))
                         .jmp (fail, as::not_zero);
-                    VISIT(op->out()); else code.jmp(labels[op->out()]);
-                    break;
 
                 case re2::kInstNop:
                     VISIT(op->out()); else code.jmp(labels[op->out()]);

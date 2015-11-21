@@ -24,7 +24,7 @@ extern "C" {
     #define rejit_list_init(x)       __rejit_list_init((x)->__list_handle)
     #define rejit_list_append(x, y)  __rejit_list_append((x)->__list_handle, (y)->__list_handle)
     #define rejit_list_remove(x)     __rejit_list_remove((x)->__list_handle)
-    #define rejit_list_container(t, f, x) (t *) ((t *) ((char *)(x) - offsetof(t, f)))
+    #define rejit_list_container(t, f, x) ((t *) ((char *)(x) - offsetof(t, f)))
 
 
     static inline void __rejit_list_init(struct rejit_list_link_t *node)

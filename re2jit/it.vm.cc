@@ -36,12 +36,12 @@ struct re2jit::native
         {
             case re2jit::kUnicodeTypeGeneral:
             case re2jit::kUnicodeTypeSpecific: {
-                uint64_t x = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length);
+                uint32_t x = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length);
 
                 if (!x)
                     break;
 
-                uint8_t cls = rejit_unicode_category((uint32_t) x);
+                uint8_t cls = rejit_unicode_category(x);
 
                 if (op.opcode == re2jit::kUnicodeTypeGeneral)
                     cls &= UNICODE_CATEGORY_GENERAL;
@@ -49,7 +49,7 @@ struct re2jit::native
                 if (cls != op.arg)
                     break;
 
-                rejit_thread_wait(nfa, st->_prog->inst(op.out), x >> 32);
+                rejit_thread_wait(nfa, st->_prog->inst(op.out), x >> 24);
                 break;
             }
 
