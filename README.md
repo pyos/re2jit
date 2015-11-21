@@ -11,6 +11,31 @@ Now, a modern implementation of the same technique (re2) adopts a
 [virtual machine approach](https://swtch.com/~rsc/regexp/regexp2.html) instead. Which is,
 obviously, slower. Slower than Python on some regexps! We can do better than that.
 
+### How?
+
+There's [a stupid string replacer](https://github.com/pyos/re2jit/blob/master/re2jit/rewriter.h)
+that substitutes more efficient fake instructions in place of some standard re2 constructs.
+(Sorry, if you wanted to match some Unicode plane 15 private use characters with this thing,
+you're out of luck - all these characters, or at least U+F0000 through U+F0FFF,
+are reserved for internal purposes.)
+
+There's [an x86-64 assembler DSL](https://github.com/pyos/re2jit/blob/master/re2jit/asm64.h).
+Looks half-way decent, but what a backward-compatibile mess x86 is...
+
+There's [a standard implementation](https://github.com/pyos/re2jit/blob/master/re2jit/threads.h)
+of the [Thompson NFA](https://github.com/pyos/re2jit/blob/master/re2jit/threads.cc).
+Nothing fancy, except for a couple functions used to facilitate backreferences. (My favorite
+part of regexps.) More on that later.
+
+There's [a generator of Unicode support tables](https://github.com/pyos/re2jit/blob/master/re2jit/unicodedata.py).
+(Slow Unicode charclass matching is part of why I was dissatisfied with re2.) With
+[fancy 2-stage lookup tables](http://www.strchr.com/multi-stage_tables) and everything.
+
+Most importantly, there's [this fine piece of software](https://github.com/pyos/re2jit/blob/master/re2jit/it.x64.cc)
+which converts hand-written x86-64 asm into opcodes, inserting constants where appropriate,
+reordering instructions, eliminating dead code, etc., etc., and writing it all into
+a chunk of mmapped executable memory.
+
 ### So...how fast is this thing?
 
 Depends.
