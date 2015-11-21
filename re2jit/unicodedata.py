@@ -17,7 +17,6 @@ def gperf(xs, name, initial):
               '\n'.join(','.join(map(str, x)) for x in xs).encode('utf-8')).decode('utf-8')
 
 
-SPACE_SIZE = 0x110000  # max. code point + 1
 BLOCK_SIZE = 8  # data = table_2[table_1[ch >> block_size] + ch % (1 << block_size)]
 
 
@@ -55,7 +54,7 @@ def make_string_table_rec(xs, bits_per_char, i, suffix):
 
 
 TABLE_CATEGORY_1, \
-TABLE_CATEGORY_2 = make_2stage_table(unicodedata.category(chr(c)) for c in range(SPACE_SIZE))
+TABLE_CATEGORY_2 = make_2stage_table(unicodedata.category(chr(c)) for c in range(0x110000))
 TABLE_CATEGORY_N = make_string_table(set(TABLE_CATEGORY_2), bits_per_char=4)
 
 print("total  blocks: ", len(TABLE_CATEGORY_1))
@@ -73,11 +72,9 @@ writeinto(os.path.join(os.path.dirname(__file__), 'unicodedata.h'),
     #endif
         #include <stdint.h>
         #include <string.h>
-        #define UNICODE_2STAGE_GET(t, c) t##_2[(c) % (1 << {1}) + t##_1[(c) >> {1}]]
+        #define UNICODE_2STAGE_GET(t, c) t##_2[(c) % (1 << {0}) + t##_1[(c) >> {0}]]
 
-        static const uint32_t UNICODE_SPACE_SIZE = {0};
-        static const uint32_t UNICODE_BLOCK_SIZE = {1};
-        static const uint8_t  UNICODE_CATEGORY_GENERAL = {2};
+        static const uint8_t  UNICODE_CATEGORY_GENERAL = {1};
         extern const uint32_t UNICODE_CATEGORY_1[];
         extern const uint8_t  UNICODE_CATEGORY_2[];
 
@@ -91,26 +88,22 @@ writeinto(os.path.join(os.path.dirname(__file__), 'unicodedata.h'),
 
     #endif
     ''',
-    SPACE_SIZE,
-    BLOCK_SIZE,
-    (1 << 4) - 1,
+    BLOCK_SIZE, 0x0F,
 )
 
 
 writeinto(os.path.join(os.path.dirname(__file__), 'unicodedata.cc'),
     '''
-    extern "C" {{
-        #include "unicodedata.h"
-        #include <string.h>
-        // gperf declares the lookup function as gnu_inline but not static.
-        // that still breaks linkage for some reason.
-        #define __inline
-        #define __gnu_inline__
+    #include "unicodedata.h"
+    #include <string.h>
+    // gperf declares the lookup function as gnu_inline but not static.
+    // that still breaks linkage for some reason.
+    #define __inline
+    #define __gnu_inline__
 
-        extern const uint32_t UNICODE_CATEGORY_1[] = {{ {} }};
-        extern const uint8_t  UNICODE_CATEGORY_2[] = {{ {} }};
-        {}
-    }};
+    extern const uint32_t UNICODE_CATEGORY_1[] = {{ {} }};
+    extern const uint8_t  UNICODE_CATEGORY_2[] = {{ {} }};
+    {}
     ''',
     ','.join(str(x)                   for x in TABLE_CATEGORY_1),
     ','.join(str(TABLE_CATEGORY_N[x]) for x in TABLE_CATEGORY_2),
