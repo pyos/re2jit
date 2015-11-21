@@ -20,6 +20,13 @@ FIXED_TEST("(?i)([A-Z0-9]+)([A-Z0-9]+)\\2\\1", UNANCHORED, "notregularregularnot
 // (With a backreference, these regexps *are* exponential.)
 FIXED_TEST("(x*)*y\\1?", ANCHOR_START, "x", false, "", "");
 FIXED_TEST("(x*)*y\\1?", ANCHOR_START, "xxxy", true, "xxxy", "" /* first it matches "xxx", then "" */);
+// PCRE can optimize the above regex, but not this one:
+FIXED_TEST("(x*){1,100}[yz]", UNANCHORED, "xx", false, "", "");
+// +1 # grep -P '(x*){1,100}[yz]' <<< 'xx'
+// grep: exceeded PCRE's backtracking limit
+FIXED_TEST("(x*){1,100}[yz]\\1?", UNANCHORED, "xx", false, "", "");
+// Pretty sure there's a bug in glibc's regexec...
+FIXED_TEST("(x*){4,}\\1", UNANCHORED, "", true, "", "");
 // Ah, Perl...
 REGEX_PRIMALITY_TEST(2, 0);
 REGEX_PRIMALITY_TEST(3, 0);
