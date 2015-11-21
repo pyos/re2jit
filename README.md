@@ -64,7 +64,9 @@ And while that does not guarantee polynomial time in worst case...
    required to match the regex by an exhaustive search on its state space. (A regexp with
    m states and k backreferenced groups has O(m \* n^(2k + 1)) possible unique combinations
    of a state, a position in an input string, and offsets for the start and end of each
-   relevant group.)
+   relevant group.) Note that this is the worst case - that regexp with backticks is
+   actually O(n + n * m^2) where m is the number of backticks the input contains. So O(n)
+   on average. I mean, how many of these an average text contains? (0. The answer is 0.)
 
  * **If, however, a backreferenced group is repeated**, all bets are off.
    The regexp `(x*)*\1` requires exponential time to match. An equivalent regexp
