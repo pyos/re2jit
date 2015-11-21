@@ -6,7 +6,7 @@ A compiler for [re2](https://github.com/google/re2/) regexps.
 
 Do you know what Thompson's NFA construction is? Have you read the original paper?
 It compiled regexps into asm code for an IBM mainframe, which is the sort of thing
-[people in the 60's did](http://www.diku.dk/hjemmesider/ansatte/henglein/papers/thompson1968.pdf).
+[people did in the 60's](http://www.diku.dk/hjemmesider/ansatte/henglein/papers/thompson1968.pdf).
 Now, a modern implementation of the same technique (re2) adopts a
 [virtual machine approach](https://swtch.com/~rsc/regexp/regexp2.html) instead. Which is,
 obviously, slower. Slower than Python on some regexps! We can do better than that.
@@ -83,7 +83,7 @@ And while that does not guarantee polynomial time in worst case...
  * **If your regexp is backreference-free**, it will match in linear time. Guaranteed.
 
  * **In general, if no backreferenced group can match multiple times** - for example,
-   a regexp like ``(`).*?\1`` satisfies that rule, while `(x*)*\1` does not -
+   a regexp like ``(`+).*?\1`` satisfies that rule, while `(x*)*\1` does not -
    it is guaranteed to run in O(n^(2k + 1)) time, where k is the number of backreferenced
    groups (1 in the above example). This is, coincidentally, exactly the amount of time
    required to match the regex by an exhaustive search on its state space. (A regexp with
@@ -96,8 +96,8 @@ And while that does not guarantee polynomial time in worst case...
  * **If, however, a backreferenced group is repeated**, all bets are off.
    The regexp `(x*)*\1` requires exponential time to match. An equivalent regexp
    `(x*)*` (it is equivalent because the last match of `x*` is always an empty string)
-   does not, as it contains no backreferences. Likewise, ``(`).*?\1(x*)*`` is O(n^3)
-   because only ``(`)`` is backreferenced, not `(x*)`, while `(x*)\1` is also O(n^3)
+   does not, as it contains no backreferences. Likewise, ``(`+).*?\1(x*)*`` is O(n^3)
+   because only ``(`+)`` is backreferenced, not `(x*)`, while `(x*)\1` is also O(n^3)
    as `(x*)` only matches once this time. Or O(n^2) if it is anchored at the beginning
    of the input.
 
