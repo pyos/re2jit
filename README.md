@@ -82,7 +82,7 @@ And while that does not guarantee polynomial time in worst case...
 
  * **If your regexp is backreference-free**, it will match in linear time. Guaranteed.
 
- * **In general, if no backreferenced group can match multiple times** - for example,
+ * **In general, if no backreferenced group is repeated** - for example,
    a regexp like ``(`+).*?\1`` satisfies that rule, while `(x*)*\1` does not -
    it is guaranteed to run in O(n^(2k + 1)) time, where k is the number of backreferenced
    groups (1 in the above example). This is, coincidentally, exactly the amount of time

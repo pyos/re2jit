@@ -108,7 +108,7 @@ struct re2jit::native
                             .mov  (as::mem(as::rdi + &NFA->input),  as::rdi)
                             .call (&rejit_read_utf8)
                             .pop  (as::rdi)
-                        // if ((edx = rax >> 32) == 0) return;
+                        // if ((edx = rax >> 24) == 0) return;
                             .mov  (as::rax, as::rdx)
                             .shr  (24,      as::rdx).jmp(fail, as::zero)
                         // inlined: eax = rejit_unicode_category(eax) @ unicode.h
@@ -133,7 +133,7 @@ struct re2jit::native
                         // if (nfa->groups <= arg * 2) return;
                         code.cmp(as::i32(op->arg * 2), as::mem(as::rdi + &NFA->groups))
                             .jmp(fail, as::less_equal_u)
-                        // if (start < 0 || end < start) return; if (end == start) goto empty;
+                        // if (start < 0 || end < start) return; if (end == start) return out();
                             .mov (as::mem(as::rdi + &NFA->running), as::rsi)
                             .mov (as::mem(as::rsi + &THREAD->groups[op->arg * 2 + 1]), as::ecx)
                             .mov (as::mem(as::rsi + &THREAD->groups[op->arg * 2]),     as::esi)
