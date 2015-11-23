@@ -45,6 +45,13 @@ namespace re2jit
         bool match(re2::StringPiece text, RE2::Anchor anchor = RE2::ANCHOR_START,
                    re2::StringPiece *groups = NULL, int ngroups = 0) const;
 
+        /* Return a mapping of group indices to names.
+         *
+         * (Named groups are declared with `(?P<name>...)` syntax.)
+         *
+         */
+        const std::map<int, std::string> &named_groups() const;
+
         /* Fetch the name of the last outermost group that matched as a null-terminated string.
          *
          * @param groups: an array of capturing subgroups populated by `it::match`.

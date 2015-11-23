@@ -16,6 +16,9 @@
 #endif
 
 
+static const std::map<int, std::string> __empty_map;
+
+
 namespace re2jit
 {
     it::it(const re2::StringPiece& pattern, int max_mem) : _capturing_groups(NULL)
@@ -135,10 +138,10 @@ namespace re2jit
     }
 
 
-    std::string it::lastgroup(const re2::StringPiece *groups, int ngroups) const
+    const std::map<int, std::string> &it::named_groups() const
     {
-        if (!ok() || ngroups < 2 || groups->data() == NULL)
-            return "";
+        if (!ok())
+            return __empty_map;
 
         auto p = _capturing_groups.load();
 
@@ -148,10 +151,20 @@ namespace re2jit
             if (!_capturing_groups.compare_exchange_strong(p, q))
                 delete q;
             else if ((p = q) == NULL)
-                return "";
+                return __empty_map;
         }
 
+        return *p;
+    }
+
+
+    std::string it::lastgroup(const re2::StringPiece *groups, int ngroups) const
+    {
+        if (ngroups < 2 || groups->data() == NULL)
+            return "";
+
         int last = 0;
+        auto map = named_groups();
         auto end = groups++->data();
 
         for (int i = 1; i < ngroups; i++, groups++)
@@ -160,7 +173,7 @@ namespace re2jit
                 end  = groups->data() + groups->size();
             }
 
-        const auto it = p->find(last);
-        return it == p->end() ? "" : it->second;
+        auto it = map.find(last);
+        return it == map.end() ? "" : it->second;
     }
 }
