@@ -14,7 +14,6 @@ namespace as
     typedef uint32_t i32;
     typedef uint64_t i64;
     typedef  int32_t s32;
-    template <typename T> static s32 p32(const T* p) { return s32(i64(p)); }
 
     enum condition : i8
     {
@@ -25,7 +24,7 @@ namespace as
 
     struct reg
     {
-        const i8 id;
+        const /* constexpr const constexpr static const constexpr */ i8 id;
         constexpr i8 L() const { return (id & 7); }
         constexpr i8 H() const { return (id & 8) >> 3; }
         constexpr bool operator == (const reg& y) const { return y.id == id; }
@@ -44,12 +43,14 @@ namespace as
 
     struct ptr
     {
-        struct base  { r64 reg; s32 add; base (r64 r, s32 a = 0) : reg(r), add(a) {} } a;
-        struct index { r64 reg; i8  mul; index(r64 r, i8  m = 1) : reg(r), mul(m) {} } b;
+        struct base  { const r64 reg; const s32 add; constexpr base (r64 r, s32 a = 0) : reg(r), add(a) {} };
+        struct index { const r64 reg; const i8  mul; constexpr index(r64 r, i8  m = 1) : reg(r), mul(m) {} };
 
-        ptr(r64  a, index b = r0) : a{a},  b{b} {}
-        ptr(base a, index b = r0) : a{a},  b{b} {}
-        ptr(        index b = r0) : a{r0}, b{b} {}
+        const base  a;
+        const index b;
+        constexpr ptr(r64  a, index b = r0) : a{a},  b{b} {}
+        constexpr ptr(base a, index b = r0) : a{a},  b{b} {}
+        constexpr ptr(        index b = r0) : a{r0}, b{b} {}
     };
 
     // `ptr` encodes `disp(base, index, scale)`. `mem` encodes the actual value at a `ptr`.
@@ -57,26 +58,27 @@ namespace as
     // instruction. That's the whole difference.
     struct mem : ptr { explicit mem(ptr x) : ptr(x) {} };
 
-    // pointer arithmetic magic
-    #define _operator(pre, op, a, b, x) \
-        pre static inline auto operator op(a, b) -> decltype(x) { return x; }
-    #define _commutative(pre, op, a, b, x) \
-        pre static inline auto operator op(a, b) -> decltype(x) { return x; }; \
-        pre static inline auto operator op(b, a) -> decltype(x) { return x; }
-    _commutative(template <typename T>, +, r64 a, T   b, ptr::base(a, b))
-    _commutative(template <typename T>, +, r64 a, T  *b, ptr::base(a, p32(b)))
-    _commutative(template <typename T>, *, r64 a, T   b, ptr::index(a, b))
-    _operator   (template <typename T>, -, r64 a, T   b, ptr::base(a, -b))
-    _operator   (                     , +, r64 a, r64 b, ptr(a, b))
+    // pointers are 64-bit, but it's possible to force them into 32 bits if necessary.
+    static inline constexpr s32 p32(const void* p) { return s32(i64(p)); }
 
-    _commutative(, +, ptr::base  a, ptr::index b, ptr(a, b))
-    _commutative(, +, ptr::base  a, s32        b, a.reg + (a.add + b))
-    _commutative(, +, ptr        a, s32        b, (a.a + b) + a.b)
-    _operator   (, +, ptr::base  a, ptr::base  b, (a.reg + b.reg) + (a.add + b.add))
-    _operator   (, -, ptr::base  a, s32        b, a.reg + (a.add - b))
-    _operator   (, -, ptr        a, s32        b, (a.a - b) + a.b)
-    _commutative(, *, ptr::index a, i8         b, a.reg * i8(a.mul * b))
-    _commutative(, *, ptr::base  a, i8         b, a.reg * b + a.add * b)
+    // pointer arithmetic magic
+    #define _operator(op, a, b, x) \
+        static inline constexpr auto operator op(a, b) -> decltype(x) { return x; }
+    #define _commutative(op, a, b, x) _operator(op, a, b, x) \
+                                      _operator(op, b, a, x)
+    _operator   (+, r64 a, r64   b, ptr(a, b))
+    _commutative(+, r64 a, s32   b, ptr::base(a, b))
+    _commutative(*, r64 a, i8    b, ptr::index(a, b))
+    _operator   (-, r64 a, s32   b, ptr::base(a, -b))
+    _commutative(+, r64 a, const void *b, ptr::base(a, p32(b)))
+    _commutative(+, ptr::base  a, ptr::index b, ptr(a, b))
+    _commutative(+, ptr::base  a, s32        b, a.reg + (a.add + b))
+    _commutative(+, ptr        a, s32        b, (a.a + b) + a.b)
+    _operator   (+, ptr::base  a, ptr::base  b, (a.reg + b.reg) + (a.add + b.add))
+    _operator   (-, ptr::base  a, s32        b, a.reg + (a.add - b))
+    _operator   (-, ptr        a, s32        b, (a.a - b) + a.b)
+    _commutative(*, ptr::index a, i8         b, a.reg * i8(a.mul * b))
+    _commutative(*, ptr::base  a, i8         b, a.reg * b + a.add * b)
     #undef _commutative
     #undef _operator
     // pointer arithmetic magic--
@@ -279,11 +281,11 @@ namespace as
                 return i.tg = &_targets.back();
             }
 
-            template <typename any>
-            code& rex(i8 w,        any b) { return rex(w, r0, b); }
+            code& rex(i8 w,        ptr b) { return rex(w,     0, b.a.reg.H(), b.b.reg.H()); }
             code& rex(i8 w, reg r, ptr b) { return rex(w, r.H(), b.a.reg.H(), b.b.reg.H()); }
             code& rex(i8 w, ptr r, reg b) { return rex(w, b.H(), r.a.reg.H(), r.b.reg.H()); }
             code& rex(i8 w, reg r, reg b) { return rex(w, r.H(),       b.H(),           0); }
+            code& rex(i8 w,        reg b) { return rex(w,     0,       b.H(),           0); }
             code& rex(i8 w,  i8 r,  i8 b, i8 x)
             {
                 //     /--- opcode is 64-bit
@@ -293,8 +295,8 @@ namespace as
                 return w + r + x + b ? imm8(0x40 | w << 3 | r << 2 | x << 1 | b) : *this;
             }
 
-            template <typename any>
-            code& modrm(reg a, any b) { return modrm(a.L(), b); }
+            code& modrm(reg a, reg b) { return modrm(a.L(), b); }
+            code& modrm(reg a, ptr b) { return modrm(a.L(), b); }
             code& modrm(ptr a, reg b) { return modrm(b.L(), a); }
             code& modrm( i8 a, reg r) { return imm8(0xc0 | a << 3 | r.L()); }
             code& modrm( i8 a, ptr m) {
@@ -319,10 +321,9 @@ namespace as
                     //    | | |   | \---/--- base register
                     //    | | \---/--- index register; %rsp if none
                     //    \-/--- index scale: result = base + index * (2 ** scale) + disp
-                    i8 scale = m.b.mul == 2 ? 1
-                             : m.b.mul == 4 ? 2
-                             : m.b.mul == 8 ? 3 : 0;
-                    i8 sib = m.b.reg.L() << 3 | scale << 6;
+                    i8 sib = m.b.reg.L() << 3 | (m.b.mul == 2 ? 0x40
+                                               : m.b.mul == 4 ? 0x80
+                                               : m.b.mul == 8 ? 0xc0 : 0);
 
                     if (m.a.reg == r0)
                         // %rbp as base in mode 0 means no base at all, only 32-bit absolute address
@@ -344,6 +345,6 @@ namespace as
                 return imm32((i32) m.a.add);
             }
     };
-};
+}
 
 #endif
