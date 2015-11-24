@@ -161,8 +161,8 @@ namespace re2jit
             return "";
 
         int last = 0;
-        auto map = named_groups();
-        auto end = groups++->data();
+        auto &map = named_groups();
+        auto  end = groups++->data();
 
         for (int i = 1; i < ngroups; i++, groups++)
             if (groups->data() >= end) {
