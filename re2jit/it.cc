@@ -16,9 +16,6 @@
 #endif
 
 
-static const std::map<int, std::string> __empty_map;
-
-
 namespace re2jit
 {
     it::it(const re2::StringPiece& pattern, int max_mem) : _capturing_groups(NULL)
@@ -140,18 +137,18 @@ namespace re2jit
 
     const std::map<int, std::string> &it::named_groups() const
     {
-        if (!ok())
-            return __empty_map;
-
         auto p = _capturing_groups.load();
 
         if (p == NULL) {
             auto q = _regexp->CaptureNames();
 
-            if (!_capturing_groups.compare_exchange_strong(p, q))
-                delete q;
-            else if ((p = q) == NULL)
-                return __empty_map;
+            if (q == NULL)
+                q = new std::map<int, std::string>;
+
+            if (_capturing_groups.compare_exchange_strong(p, q))
+                return *q;
+
+            delete q;
         }
 
         return *p;
