@@ -85,11 +85,7 @@ extern "C" {
         // the threads. ALL of them, ordered by descending priority.
         // there is no match if this becomes empty at any point.
         RE2JIT_LIST_ROOT(struct rejit_thread_t) threads;
-        // id of the bitmap currently in use. if a thread with a different id
-        // is encountered, the bitmap must be reset because that thread
-        // (and the ones it will spawn) is different from any we've already run.
-        unsigned bitmap_id;
-        // last assigned bitmap id. incremented each time a backreferenced
+        // last assigned `rejit_threadq_t.bitmap`. incremented each time a backreferenced
         // group matches at a new offset.
         unsigned bitmap_id_last;
         // arbitrary additional data.

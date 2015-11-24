@@ -97,7 +97,8 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
         return -1;
 
     do {
-        r->bitmap_id = -1;
+        // is this is volatile, gcc generates better code for some reason.
+        volatile unsigned bitmap_id = -1;
 
         if (!((r->flags & RE2JIT_ANCHOR_START) && r->offset))
             rejit_thread_initial(r);
@@ -118,8 +119,8 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
                 continue;
             }
 
-            if (r->bitmap_id != q->bitmap) {
-                r->bitmap_id  = q->bitmap;
+            if (bitmap_id != q->bitmap) {
+                bitmap_id  = q->bitmap;
                 if (small_map)
                     __bitmap = 0;
                 else
