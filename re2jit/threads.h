@@ -61,13 +61,9 @@ extern "C" {
         // actual length of `rejit_thread_t.groups`. must be at least 2 to store
         // the location of the whole match, + 2 per capturing group, if needed.
         unsigned groups;
-        // inverted combination of RE2JIT_EMPTY_FLAGS,
-        // i.e. a flag is set if &-ing with it yields 0.
-        unsigned char  empty;
         // the one to run on the next input byte.
-        unsigned char  queue : 1;
-        // RE2JIT_THREAD_FLAGS. not inverted this time.
-        unsigned char  flags : 7;
+        unsigned char queue;
+        unsigned char flags;  // enum RE2JIT_THREAD_FLAGS
         // size of `bitmap`. 64 KB is enough for everyone.
         unsigned short space;
         // mark visited states here. resets automatically after advancing the input ptr
@@ -117,6 +113,9 @@ extern "C" {
     /* Create a copy of the current thread and place it onto the waiting queue
      * until N more bytes of input are consumed. Returns 1 in same cases as `match`. */
     int rejit_thread_wait(struct rejit_threadset_t *, const void *, size_t);
+
+    /* Check that all empty flags match at the current character. */
+    int rejit_thread_satisfies(struct rejit_threadset_t *r, enum RE2JIT_EMPTY_FLAGS empty);
 
     /* Save the current state bitmap and create a new, zero-filled one
      * because there was some change in state that is impossible to record

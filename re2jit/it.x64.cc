@@ -241,9 +241,13 @@ struct re2jit::native
                     break;
 
                 case re2::kInstEmptyWidth:
-                    // if (nfa->empty & empty) return;
-                    code.test(as::i8(op->empty()), as::mem(as::rdi + &NFA->empty))
-                        .jmp (fail, as::not_zero);
+                    // if (!rejit_thread_satisfies(nfa, empty)) return;
+                    code.push(as::rdi)
+                        .mov (as::i32(op->empty()), as::esi)
+                        .call(&rejit_thread_satisfies)
+                        .pop (as::rdi)
+                        .test(as::eax, as::eax)
+                        .jmp (fail, as::zero);
 
                 case re2::kInstNop:
                     VISIT(op->out()); else code.jmp(labels[op->out()]);

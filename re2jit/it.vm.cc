@@ -131,7 +131,7 @@ struct re2jit::native
                 break;
 
             case re2::kInstEmptyWidth:
-                if (op->empty() & nfa->empty)
+                if (!rejit_thread_satisfies(nfa, op->empty()))
                     break;
 
             case re2::kInstNop:

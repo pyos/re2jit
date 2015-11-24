@@ -87,7 +87,6 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
     r->offset         = 0;
     r->queue          = 0;
     r->free           = NULL;
-    r->empty          = ~(RE2JIT_EMPTY_BEGIN_LINE | RE2JIT_EMPTY_BEGIN_TEXT);
     rejit_list_init(&r->threads);
     rejit_list_init(&r->queues[0]);
     rejit_list_init(&r->queues[1]);
@@ -102,11 +101,6 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
 
         if (!((r->flags & RE2JIT_ANCHOR_START) && r->offset))
             rejit_thread_initial(r);
-
-        if (!r->length)
-            r->empty &= ~(RE2JIT_EMPTY_END_LINE | RE2JIT_EMPTY_END_TEXT);
-        else if (*r->input == '\n')
-            r->empty &= ~RE2JIT_EMPTY_END_LINE;
 
         struct rejit_thread_t  *t;
         struct rejit_threadq_t *q = r->queues[queue].first;
@@ -142,8 +136,6 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
         r->input++;
         r->offset++;
         r->queue = queue = !queue;
-        r->empty = r->empty & RE2JIT_EMPTY_END_LINE ? ~0 : ~RE2JIT_EMPTY_BEGIN_LINE;
-        // Word boundaries not supported because UTF-8.
     } while (r->length--);
 
     if (!small_map)
@@ -200,6 +192,26 @@ int rejit_thread_wait(struct rejit_threadset_t *r, const void *state, size_t shi
     t->queue.wait = shift - 1;
     rejit_list_append(r->queues[!r->queue].last, &t->queue);
     return 0;
+}
+
+
+int rejit_thread_satisfies(struct rejit_threadset_t *r, enum RE2JIT_EMPTY_FLAGS empty)
+{
+    if (empty & RE2JIT_EMPTY_BEGIN_TEXT)
+        if (r->offset)
+            return 0;
+    if (empty & RE2JIT_EMPTY_END_TEXT)
+        if (r->length)
+            return 0;
+    if (empty & RE2JIT_EMPTY_BEGIN_LINE)
+        if (r->offset && r->input[-1] != '\n')
+            return 0;
+    if (empty & RE2JIT_EMPTY_END_LINE)
+        if (r->length && r->input[0] != '\n')
+            return 0;
+    if (empty & (RE2JIT_EMPTY_WORD_BOUNDARY | RE2JIT_EMPTY_NON_WORD_BOUNDARY))
+        return 0;  // TODO read UTF-8 chars or something
+    return 1;
 }
 
 
