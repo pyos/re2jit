@@ -59,11 +59,11 @@ namespace as
     struct mem : ptr { explicit mem(ptr x) : ptr(x) {} };
 
     // pointers are 64-bit, but it's possible to force them into 32 bits if necessary.
-    static inline constexpr s32 p32(const void* p) { return s32(i64(p)); }
+    static inline s32 p32(const void *p) { return s32(i64(p)); }
 
     // pointer arithmetic magic
     #define _operator(op, a, b, x) \
-        static inline constexpr auto operator op(a, b) -> decltype(x) { return x; }
+        static inline auto operator op(a, b) -> decltype(x) { return x; }
     #define _commutative(op, a, b, x) _operator(op, a, b, x) \
                                       _operator(op, b, a, x)
     _operator   (+, r64 a, r64   b, ptr(a, b))
