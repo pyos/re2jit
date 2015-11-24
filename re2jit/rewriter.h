@@ -134,7 +134,7 @@ namespace re2jit
                 case re2::kInstByteRange:
                     if ((i->lo() & 0xC0) == 0x80 && (i->hi() & 0xC0) == 0x80)  // utf-8 continuation
                         for (int a = i->lo(); a <= i->hi(); a++) {
-                            if (q.opcode == uint8_t(-1))
+                            if (q.opcode == ecode_t(-1))
                                 // first byte -- 4-bit opcode + high 2 bits of argument
                                 fst.push_back(inst { ecode_t((a >> 2) & 0xF), uint8_t(a << 6), i->out() });
                             else

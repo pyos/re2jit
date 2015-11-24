@@ -107,5 +107,5 @@ writeinto(os.path.join(os.path.dirname(__file__), 'unicodedata.cc'),
     ''',
     ','.join(str(x)                   for x in TABLE_CATEGORY_1),
     ','.join(str(TABLE_CATEGORY_N[x]) for x in TABLE_CATEGORY_2),
-    gperf(TABLE_CATEGORY_N.items(), '_rejit_uni_cat_id', ', 0'),
+    gperf(TABLE_CATEGORY_N.items(), '_rejit_uni_cat_id', ', 0').replace('register ', ''),
 )
