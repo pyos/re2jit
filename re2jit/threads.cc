@@ -81,7 +81,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
 {
     unsigned char queue = 0;
     unsigned char small_map = r->space <= sizeof(size_t);
-    size_t __bitmap;
+    volatile size_t __bitmap;
 
     r->bitmap_id_last = 0;
     r->offset         = 0;
