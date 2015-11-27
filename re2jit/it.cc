@@ -120,9 +120,9 @@ namespace re2jit
         nfa.initial = _native->state;
         nfa.flags   = flags;
 
-        int *gs, r = rejit_thread_dispatch(&nfa, &gs);
+        const int *gs = rejit_thread_dispatch(&nfa);
 
-        if (r == 1)
+        if (gs)
             for (int i = 0; i < ngroups; i++, gs += 2) {
                 if (gs[1] < 0)
                     groups[i].set((const char *) NULL, 0);
@@ -131,7 +131,7 @@ namespace re2jit
             }
 
         rejit_thread_free(&nfa);
-        return r;
+        return gs != NULL;
     }
 
 

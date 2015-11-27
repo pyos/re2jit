@@ -77,7 +77,7 @@ static struct rejit_thread_t *rejit_thread_initial(struct rejit_threadset_t *r)
 }
 
 
-int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
+const int *rejit_thread_dispatch(struct rejit_threadset_t *r)
 {
     unsigned char queue = 0;
     unsigned char small_map = r->space <= sizeof(size_t);
@@ -94,7 +94,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
     if (small_map)
         r->bitmap = (uint8_t *) &__bitmap;
     else if ((r->bitmap = (uint8_t *) malloc(r->space)) == NULL)
-        return -1;
+        return NULL;
 
     do {
         // if this is volatile, gcc generates better code for some reason.
@@ -145,13 +145,12 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
     if (r->flags & RE2JIT_UNDEFINED)
         // XOO < *ac was completely screwed out of memory
         //        and nothing can fix that!!*
-        return -1;
+        return NULL;
 
     if (r->threads.first == rejit_list_end(&r->threads))
-        return 0;
+        return NULL;
 
-    *groups = r->threads.first->groups;
-    return 1;
+    return r->threads.first->groups;
 }
 
 

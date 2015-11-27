@@ -93,11 +93,10 @@ extern "C" {
     };
 
 
-    /* Run the NFA. Returns -1 if ran out of memory, 0 if failed, and 1 if matched,
-     * in which case the provided pointer will be set to an array of group boundaries.
+    /* Run the NFA. Returns an array of group boundaries if matched, NULL if not.
      * `input`, `length`, `groups`, `flags`, `space`, `entry`, and `initial`
-     * must be set prior to calling this. */
-    int rejit_thread_dispatch(struct rejit_threadset_t *, int **);
+     * must be set prior to calling this. Array is only valid until `rejit_thread_free`. */
+    const int *rejit_thread_dispatch(struct rejit_threadset_t *);
 
     /* Release any lingering threads. The array returned by dispatch becomes invalid. */
     void rejit_thread_free(struct rejit_threadset_t *);
