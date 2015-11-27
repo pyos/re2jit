@@ -97,7 +97,7 @@ int rejit_thread_dispatch(struct rejit_threadset_t *r, int **groups)
         return -1;
 
     do {
-        // is this is volatile, gcc generates better code for some reason.
+        // if this is volatile, gcc generates better code for some reason.
         volatile unsigned bitmap_id = -1;
 
         if (!((r->flags & RE2JIT_ANCHOR_START) && r->offset))
