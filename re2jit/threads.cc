@@ -77,7 +77,7 @@ static struct rejit_thread_t *rejit_thread_initial(struct rejit_threadset_t *r)
 }
 
 
-const int *rejit_thread_dispatch(struct rejit_threadset_t *r)
+const unsigned *rejit_thread_dispatch(struct rejit_threadset_t *r)
 {
     unsigned char queue = 0;
     unsigned char small_map = r->space <= sizeof(size_t);

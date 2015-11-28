@@ -49,15 +49,15 @@ extern "C" {
         const void *state;
         // group `i` spans the input from `groups[2i]`-th character to `groups[2i+1]`-th.
         // if either bound is -1, the group did not match. 0-th group is the whole match.
-        int groups[];
+        unsigned groups[];
     };
 
 
     struct rejit_threadset_t
     {
   /*0*/ const char *input;
-        size_t offset;
-        size_t length;
+        unsigned offset;
+        unsigned length;
         // actual length of `rejit_thread_t.groups`. must be at least 2 to store
         // the location of the whole match, + 2 per capturing group, if needed.
         unsigned groups;
@@ -78,10 +78,10 @@ extern "C" {
         // `rejit_thread_wait` for each non-epsilon transition we can take.
         void (*entry)(struct rejit_threadset_t *, const void *);
         // the initial state of the automaton, duh.
-  /*8*/ const void *initial;
+        const void *initial;
         // threads in the active queue should be run, threads in the other one
         // wait until input is advanced one byte.
-        RE2JIT_LIST_ROOT(struct rejit_threadq_t) queues[2];
+  /*8*/ RE2JIT_LIST_ROOT(struct rejit_threadq_t) queues[2];
         // the threads. ALL of them, ordered by descending priority.
         // there is no match if this becomes empty at any point.
         RE2JIT_LIST_ROOT(struct rejit_thread_t) threads;
@@ -89,14 +89,14 @@ extern "C" {
         // group matches at a new offset.
         unsigned bitmap_id_last;
         // arbitrary additional data.
- /*16*/ void *data;
+        void *data;
     };
 
 
     /* Run the NFA. Returns an array of group boundaries if matched, NULL if not.
      * `input`, `length`, `groups`, `flags`, `space`, `entry`, and `initial`
      * must be set prior to calling this. Array is only valid until `rejit_thread_free`. */
-    const int *rejit_thread_dispatch(struct rejit_threadset_t *);
+    const unsigned *rejit_thread_dispatch(struct rejit_threadset_t *);
 
     /* Release any lingering threads. The array returned by dispatch becomes invalid. */
     void rejit_thread_free(struct rejit_threadset_t *);

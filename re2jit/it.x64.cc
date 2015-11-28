@@ -104,7 +104,7 @@ struct re2jit::native
                     case re2jit::kUnicodeTypeSpecific:
                         // rax = rejit_read_utf8(nfa->input, nfa->length);
                         code.push (as::rdi)
-                            .mov  (as::mem(as::rdi + &NFA->length), as::rsi)
+                            .mov  (as::mem(as::rdi + &NFA->length), as::esi)
                             .mov  (as::mem(as::rdi + &NFA->input),  as::rdi)
                             .call (&rejit_read_utf8)
                             .pop  (as::rdi)
@@ -133,18 +133,18 @@ struct re2jit::native
                         // if (nfa->groups <= arg * 2) return;
                         code.cmp(as::i32(op->arg * 2), as::mem(as::rdi + &NFA->groups))
                             .jmp(fail, as::less_equal_u)
-                        // if (start < 0 || end < start) return; if (end == start) return out();
+                        // if (end == -1 || end < start) return; if (end == start) return out();
                             .mov (as::mem(as::rdi + &NFA->running), as::rsi)
                             .mov (as::mem(as::rsi + &THREAD->groups[op->arg * 2 + 1]), as::ecx)
                             .mov (as::mem(as::rsi + &THREAD->groups[op->arg * 2]),     as::esi)
-                            .test(as::esi, as::esi).jmp(fail, as::negative)
-                            .sub (as::esi, as::ecx).jmp(fail, as::less)
+                            .cmp (as::i32(-1), as::ecx).jmp(fail, as::equal)
+                            .sub (as::esi,     as::ecx).jmp(fail, as::less_u)
                             .jmp (labels[op->out], as::equal)
                         // if (nfa->length < end - start) return;
-                            .cmp(as::rcx, as::mem(as::rdi + &NFA->length)).jmp(fail, as::less_u)
+                            .cmp(as::ecx, as::mem(as::rdi + &NFA->length)).jmp(fail, as::less_u)
                         // if (memcmp(nfa->input, nfa->input + start - nfa->offset, end - start)) return;
                             .push(as::rdi)
-                            .sub (as::mem(as::rdi + &NFA->offset), as::rsi)
+                            .sub (as::mem(as::rdi + &NFA->offset), as::esi).movsl(as::esi, as::rsi)
                             .mov (as::mem(as::rdi + &NFA->input),  as::rdi)
                             .add (as::rdi, as::rsi)
                             .mov (as::ecx, as::edx)

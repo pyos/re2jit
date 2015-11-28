@@ -104,9 +104,9 @@ struct re2jit::native
             }
 
             case re2::kInstCapture: {
-                int restore = nfa->running->groups[op->cap()];
+                unsigned restore = nfa->running->groups[op->cap()];
 
-                if ((size_t) op->cap() >= nfa->groups || (size_t) restore == nfa->offset) {
+                if ((unsigned) op->cap() >= nfa->groups || restore == nfa->offset) {
                     entry(nfa, st->_prog->inst(op->out()));
                     break;
                 }

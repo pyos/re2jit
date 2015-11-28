@@ -120,11 +120,11 @@ namespace re2jit
         nfa.initial = _native->state;
         nfa.flags   = flags;
 
-        const int *gs = rejit_thread_dispatch(&nfa);
+        const unsigned *gs = rejit_thread_dispatch(&nfa);
 
         if (gs)
             for (int i = 0; i < ngroups; i++, gs += 2) {
-                if (gs[1] < 0)
+                if (gs[1] == (unsigned) -1)
                     groups[i].set((const char *) NULL, 0);
                 else
                     groups[i].set(text.data() + gs[0], gs[1] - gs[0]);
