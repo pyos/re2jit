@@ -128,6 +128,8 @@ namespace as
         code& rel32 (lab i) { init_label(i)->offsets.push_back(size()); return imm32(0); }
         code& mark  (lab i) { init_label(i)->offset = size(); return *this; }
 
+        // NOTE: if a 2-register instruction is R/M -> R, order of registers is swapped:
+        //       reg1 contains the source while reg2 specifies the destination.
         //           src    dst             REX prefix   opcode     ModR/M      immediate
         //                  /cond           [64-bit mode]           [+ disp]
         code& add   ( i8 a,  rb b) { return rex(0,    b).imm8(0x80).modrm(0, b).imm8 (a) ; }
@@ -141,8 +143,8 @@ namespace as
         code& add   (i32 a, mem b) { return rex(0,    b).imm8(0x81).modrm(0, b).imm32(a) ; }
         code& add   (r32 a, mem b) { return rex(0, a, b).imm8(0x01).modrm(a, b)          ; }
         code& add   (r64 a, mem b) { return rex(1, a, b).imm8(0x01).modrm(a, b)          ; }
-        code& add   (mem a, r32 b) { return rex(0, a, b).imm8(0x03).modrm(a, b)          ; }
-        code& add   (mem a, r64 b) { return rex(1, a, b).imm8(0x03).modrm(a, b)          ; }
+        code& add   (mem a, r32 b) { return rex(0, a, b).imm8(0x03).modrm(a, b)          ; } // r/m -> r
+        code& add   (mem a, r64 b) { return rex(1, a, b).imm8(0x03).modrm(a, b)          ; } // r/m -> r
         code& and_  ( i8 a,  rb b) { return rex(0,    b).imm8(0x80).modrm(4, b).imm8 (a) ; }
         code& and_  ( i8 a, r32 b) { return rex(0,    b).imm8(0x83).modrm(4, b).imm8 (a) ; }
         code& and_  ( i8 a, r64 b) { return rex(1,    b).imm8(0x83).modrm(4, b).imm8 (a) ; }
@@ -160,6 +162,7 @@ namespace as
         code& cmp   (r64 a, r64 b) { return rex(1, a, b).imm8(0x39).modrm(a, b)          ; }
         code& cmp   ( i8 a, mem b) { return rex(0,    b).imm8(0x80).modrm(7, b).imm8 (a) ; }
         code& cmp   (i32 a, mem b) { return rex(0,    b).imm8(0x81).modrm(7, b).imm32(a) ; }
+        code& cmp   (r32 a, mem b) { return rex(0, a, b).imm8(0x39).modrm(a, b)          ; }
         code& cmp   (r64 a, mem b) { return rex(1, a, b).imm8(0x39).modrm(a, b)          ; }
         code& cmpsb (            ) { return              imm8(0xa6)                      ; }
         code& dec   (       r32 b) { return rex(0,    b).imm8(0xff).modrm(1, b)          ; }
@@ -180,14 +183,20 @@ namespace as
         code& mov   (i64 a, r64 b) { return // if upper dword is 0, no need to waste space.
                                   a >> 32 ? rex(1,    b).imm8(0xb8 | b.L()).    imm64(a)
                                           : rex(0,    b).imm8(0xb8 | b.L()).    imm32(a) ; }
+        code& movzb ( rb a, r32 b) { return rex(0, b, a).imm8(0x0f)
+                                                        .imm8(0xb6).modrm(b, a)          ; }  // r/m -> r
         code& mov   (r32 a, r32 b) { return rex(0, a, b).imm8(0x89).modrm(a, b)          ; }
         code& mov   (r64 a, r64 b) { return rex(1, a, b).imm8(0x89).modrm(a, b)          ; }
+        code& movsl (r32 a, r64 b) { return rex(1, b, a).imm8(0x63).modrm(b, a)          ; }  // r/m -> r
         code& mov   (i32 a, mem b) { return rex(1,    b).imm8(0xc7).modrm(0, b).imm32(a) ; }
         code& mov   (r32 a, mem b) { return rex(0, a, b).imm8(0x89).modrm(a, b)          ; }
         code& mov   (r64 a, mem b) { return rex(1, a, b).imm8(0x89).modrm(a, b)          ; }
-        code& mov   (mem a,  rb b) { return rex(0, a, b).imm8(0x8a).modrm(a, b)          ; }
-        code& mov   (mem a, r32 b) { return rex(0, a, b).imm8(0x8b).modrm(a, b)          ; }
-        code& mov   (mem a, r64 b) { return rex(1, a, b).imm8(0x8b).modrm(a, b)          ; }
+        code& mov   (mem a,  rb b) { return rex(0, a, b).imm8(0x8a).modrm(a, b)          ; }  // r/m -> r
+        code& movzb (mem a, r32 b) { return rex(0, b, a).imm8(0x0f)
+                                                        .imm8(0xb6).modrm(b, a)          ; }  // r/m -> r
+        code& mov   (mem a, r32 b) { return rex(0, a, b).imm8(0x8b).modrm(a, b)          ; }  // r/m -> r
+        code& mov   (mem a, r64 b) { return rex(1, a, b).imm8(0x8b).modrm(a, b)          ; }  // r/m -> r
+        code& movsl (mem a, r64 b) { return rex(1, a, b).imm8(0x63).modrm(a, b)          ; }  // r/m -> r
         code& mov   (ptr a, r32 b) { return rex(0, a, b).imm8(0x8d).modrm(a, b) /* lea */; }
         code& mov   (ptr a, r64 b) { return rex(1, a, b).imm8(0x8d).modrm(a, b) /* lea */; }
         code& mov   (lab a, r64 b) { return rex(1,    b).imm8(0x8d).imm8(b.L() << 3 | rip.L())
@@ -230,8 +239,8 @@ namespace as
         code& sub   (i32 a, mem b) { return rex(0,    b).imm8(0x81).modrm(5, b).imm32(a) ; }
         code& sub   (r32 a, mem b) { return rex(0, a, b).imm8(0x29).modrm(a, b)          ; }
         code& sub   (r64 a, mem b) { return rex(1, a, b).imm8(0x29).modrm(a, b)          ; }
-        code& sub   (mem a, r32 b) { return rex(0, a, b).imm8(0x2b).modrm(a, b)          ; }
-        code& sub   (mem a, r64 b) { return rex(1, a, b).imm8(0x2b).modrm(a, b)          ; }
+        code& sub   (mem a, r32 b) { return rex(0, a, b).imm8(0x2b).modrm(a, b)          ; }  // r/m -> r
+        code& sub   (mem a, r64 b) { return rex(1, a, b).imm8(0x2b).modrm(a, b)          ; }  // r/m -> r
         code& test  (i32 a, r32 b) { return rex(0,    b).imm8(0xf7).modrm(0, b).imm32(a) ; }
         code& test  (i32 a, r64 b) { return rex(1,    b).imm8(0xf7).modrm(0, b).imm32(a) ; }
         code& test  (r32 a, r32 b) { return rex(0, a, b).imm8(0x85).modrm(a, b)          ; }
@@ -249,16 +258,10 @@ namespace as
         code& xor_  (r32 a, r32 b) { return rex(0, a, b).imm8(0x31).modrm(a, b)          ; }
         code& xor_  (r64 a, r64 b) { return rex(1, a, b).imm8(0x31).modrm(a, b)          ; }
 
-        // NOTE: CMOVcc and MOVZX: ModR/M reg1/reg2 fields are swapped compared to normal MOV.
-        //       mov    %eax, %ecx  ->       0x89 [0xc1] (= 0b11 000 001)
-        //       cmovbe %eax, %ecx  ->  0x0f 0x46 [0xc8] (= 0b11 001 000)
-        // This is because mov is either r -> r/m or m -> r while cmovcc is r/m -> r.
-        code& mov   (r32 a, r32 b, cnd c) { return rex(0, b, a).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }
-        code& mov   (r64 a, r64 b, cnd c) { return rex(1, b, a).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }
-        code& mov   (mem a, r32 b, cnd c) { return rex(0, b, a).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }
-        code& mov   (mem a, r64 b, cnd c) { return rex(1, b, a).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }
-        code& movzb ( rb a, r32 b       ) { return rex(0, b, a).imm8(0x0f).imm8(0xb6).    modrm(b, a); }
-        code& movzb (mem a, r32 b       ) { return rex(0, b, a).imm8(0x0f).imm8(0xb6).    modrm(b, a); }
+        code& mov   (r32 a, r32 b, cnd c) { return rex(0, b, a).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }  // r/m -> r
+        code& mov   (r64 a, r64 b, cnd c) { return rex(1, b, a).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }  // r/m -> r
+        code& mov   (mem a, r32 b, cnd c) { return rex(0, b, a).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }  // r/m -> r
+        code& mov   (mem a, r64 b, cnd c) { return rex(1, b, a).imm8(0x0f).imm8(0x40 | c).modrm(b, a); }  // r/m -> r
 
         // shorthands for indirect jumps to 64-bit (ok, 48-bit) pointers.
         template <typename T> code& mov   (T* p, r64 b) { return mov(i64(p), b); }
