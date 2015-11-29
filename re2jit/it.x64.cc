@@ -280,7 +280,7 @@ struct re2jit::native
         }
 
         state = m;
-        space = (space + 7) / 8;  // convert bytes to bits
+        space = (space + 7) / 8;  // bits -> bytes
     }
 
    ~native()
