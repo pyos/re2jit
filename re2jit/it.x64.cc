@@ -102,6 +102,8 @@ struct re2jit::native
                 switch (op->opcode) {
                     case re2jit::kUnicodeTypeGeneral:
                     case re2jit::kUnicodeTypeSpecific:
+                    case re2jit::kUnicodeTypeGeneralNegated:
+                    case re2jit::kUnicodeTypeSpecificNegated:
                         // rax = rejit_read_utf8(nfa->input, nfa->length);
                         code.push (as::rdi)
                             .mov  (as::mem(as::rdi + &NFA->length), as::esi)
@@ -122,7 +124,10 @@ struct re2jit::native
                             code.and_(UNICODE_CATEGORY_GENERAL, as::eax);
 
                         code.cmp  (as::i8(op->arg), as::eax)
-                            .jmp  (fail, as::not_equal)
+                            .jmp  (fail,
+                                op->opcode == re2jit::kUnicodeTypeGeneralNegated ||
+                                op->opcode == re2jit::kUnicodeTypeSpecificNegated
+                                ? as::equal : as::not_equal)
                         // return rejit_thread_wait(nfa, &out, edx);
                             .mov  (labels[op->out], as::rsi)
                             .jmp  (&rejit_thread_wait);

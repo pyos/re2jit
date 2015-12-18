@@ -14,6 +14,8 @@ namespace re2jit
     {
         kUnicodeTypeGeneral,
         kUnicodeTypeSpecific,
+        kUnicodeTypeGeneralNegated,
+        kUnicodeTypeSpecificNegated,
         kBackreference,
     };
 
@@ -53,8 +55,10 @@ namespace re2jit
         for (; i < regexp.size() - 1; i++)
             // backslash cannot be the last character
             if (regexp[i] == '\\') {
-                if (regexp[i + 1] == 'p') {
+                if (regexp[i + 1] == 'p' || regexp[i + 1] == 'P') {
                     // '\p{kind}' or '\pK' -- match a whole Unicode character class
+                    // '\P{kind}' or '\PK' -- match everything except a class
+                    auto neg = regexp[i + 1] == 'P';
                     auto lp = i + 2;
                     auto rp = i + 3;
 
@@ -68,8 +72,10 @@ namespace re2jit
 
                     if (id)
                         i = _rewrite_inst(regexp, i, rp + (lp != i + 2),
-                            rp - lp == 1 ? kUnicodeTypeGeneral
-                                         : kUnicodeTypeSpecific, *id);
+                            rp - lp == 1 && neg ? kUnicodeTypeGeneralNegated
+                          : rp - lp == 1        ? kUnicodeTypeGeneral
+                          : neg                 ? kUnicodeTypeSpecificNegated
+                          :                       kUnicodeTypeSpecific, *id);
                 }
                 else if (isdigit(regexp[i + 1])) {
                     // \1234 -- backreference to group 1234.

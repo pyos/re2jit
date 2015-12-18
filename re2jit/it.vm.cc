@@ -35,7 +35,9 @@ struct re2jit::native
         for (auto& op : ext) switch (op.opcode)
         {
             case re2jit::kUnicodeTypeGeneral:
-            case re2jit::kUnicodeTypeSpecific: {
+            case re2jit::kUnicodeTypeSpecific:
+            case re2jit::kUnicodeTypeGeneralNegated:
+            case re2jit::kUnicodeTypeSpecificNegated: {
                 uint32_t x = rejit_read_utf8((const uint8_t *) nfa->input, nfa->length);
 
                 if (!x)
@@ -46,7 +48,10 @@ struct re2jit::native
                 if (op.opcode == re2jit::kUnicodeTypeGeneral)
                     cls &= UNICODE_CATEGORY_GENERAL;
 
-                if (cls != op.arg)
+                bool neg = op.opcode == re2jit::kUnicodeTypeGeneralNegated
+                        || op.opcode == re2jit::kUnicodeTypeSpecificNegated;
+
+                if ((cls != op.arg) ^ neg)
                     break;
 
                 rejit_thread_wait(nfa, st->_prog->inst(op.out), x >> 24);

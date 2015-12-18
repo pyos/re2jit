@@ -7,12 +7,15 @@
 MATCH_PERF_TEST(5000, "(\\p{L}*)", ANCHOR_BOTH, "latin", 2);
 MATCH_PERF_TEST(5000, "(\\p{L}*)", ANCHOR_BOTH, "кириллица", 2);
 MATCH_PERF_TEST(5000, "(\\p{L}*)", ANCHOR_BOTH, "ελληνικά", 2);
+MATCH_PERF_TEST(5000, "(\\P{L}*)", ANCHOR_BOTH, "12345", 2);
 // Single-character categories need not be wrapped in brackets.
 MATCH_PERF_TEST(5000, "(\\pL*)", ANCHOR_BOTH, "繁體字", 2);
 MATCH_PERF_TEST(5000, "(\\pL*)", ANCHOR_BOTH, "カタカナ", 2);
 MATCH_PERF_TEST(5000, "(\\p{L}*)", ANCHOR_BOTH, "asdfg 1234567890 fail", 2);
+MATCH_PERF_TEST(5000, "(\\P{L}*)", ANCHOR_BOTH, "asdfg 1234567890 fail", 2);
 MATCH_PERF_TEST(9000, "(\\p{N}*)", ANCHOR_BOTH, "1234567890", 2);
 MATCH_PERF_TEST(9000, "(\\p{N}*)", ANCHOR_BOTH, "ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫⅬⅭⅮⅯ", 2);
+MATCH_PERF_TEST(9000, "(\\P{N}*)", ANCHOR_BOTH, "abcde", 2);
 // These two don't match even though I copied these characters from a Wikipedia page
 // on numerals in Unicode.
 MATCH_PERF_TEST(9000, "(\\p{N}*)", ANCHOR_BOTH, "ΠΔΗΧΜ", 2);
