@@ -51,11 +51,16 @@ namespace re2jit
     {
         auto i = std::string::size_type();
         bool is_re2 = true;
+        bool in_negated_chclass = false;
 
         for (; i < regexp.size() - 1; i++)
             // backslash cannot be the last character
             if (regexp[i] == '\\') {
-                if (regexp[i + 1] == 'p' || regexp[i + 1] == 'P') {
+                if (in_negated_chclass)
+                    // [^\U+F0xxx] would be interpreted as "anything except that character".
+                    // this would completely screw us.
+                    goto unrecognized;
+                else if (regexp[i + 1] == 'p' || regexp[i + 1] == 'P') {
                     // '\p{kind}' or '\pK' -- match a whole Unicode character class
                     // '\P{kind}' or '\PK' -- match everything except a class
                     auto neg = regexp[i + 1] == 'P';
@@ -87,6 +92,10 @@ namespace re2jit
                     is_re2 = false;
                 } else unrecognized: i++;
             }
+            else if (regexp[i] == '[' && regexp[i + 1] == '^')
+                in_negated_chclass = true;
+            else if (in_negated_chclass && regexp[i] == ']')
+                in_negated_chclass = false;
 
         return is_re2;
     }

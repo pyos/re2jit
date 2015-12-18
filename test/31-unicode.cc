@@ -32,3 +32,5 @@ MATCH_TEST("UPPERCASE \\p{Lu}", ANCHOR_BOTH, "UPPERCASE L", 1);
 MATCH_TEST("UPPERCASE \\p{Lu}", ANCHOR_BOTH, "UPPERCASE u", 1);
 MATCH_TEST("lowercase \\p{Ll}", ANCHOR_BOTH, "lowercase L", 1);
 MATCH_TEST("lowercase \\p{Ll}", ANCHOR_BOTH, "lowercase u", 1);
+// Don't rewrite extcodes in negated classes.
+MATCH_TEST("[^\\P{Zs}]", ANCHOR_BOTH, " ", 1);
