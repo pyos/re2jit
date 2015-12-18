@@ -98,8 +98,8 @@ namespace re2jit
                 if (!matched) return 0;
                 if (!ngroups) return 1;
 
-                matched = !_reverse->SearchDFA(found, text, re2::Prog::kAnchored,
-                                               re2::Prog::kLongestMatch, &found, &failed, NULL);
+                matched = _reverse->SearchDFA(found, text, re2::Prog::kAnchored,
+                                              re2::Prog::kLongestMatch, &found, &failed, NULL);
 
                 if (!failed && matched) {
                     text  = groups[0] = found;
