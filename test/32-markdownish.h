@@ -27,8 +27,8 @@ static const constexpr int  stage1_groups = 12;
 //   (?P<code> (`+) ... \2 )
 //
 // re2 does not support them, so we'll change the syntax a bit to only accept single quotes.
-static const constexpr char stage2_re[] = "(?is)(?P<code>`(?P<code_>.+?)`)|(?P<bold>\\*\\*(?P<bold_>(?:\\\\?.)+?)\\*\\*)|(?P<italic>\\*(?P<italic_>(?:\\\\?.)+?)\\*)|(?P<strike>~~(?P<strike_>(?:\\\\?.)+?)~~)|(?P<invert>%%(?P<invert_>(?:\\\\?.)+?)%%)|(?P<hyperlink>[a-z][a-z0-9+.-]*:(?:[,.?]?[^\\s(<>)\"',.?%]|%[0-9a-f]{2}|\\([^\\s(<>)\"']+\\))+)|(?P<text>[\\w_]*\\w)|(?P<escape>\\\\?(?P<escaped>.))";
-static const constexpr int  stage2_groups = 15;
+static const constexpr char stage2_re[] = "(?is)(?P<code>`(?P<code_>.+?)`)|(?P<bold>\\*\\*(?P<bold_>(?:\\\\?.)+?)\\*\\*)|(?P<italic>\\*(?P<italic_>(?:\\\\?.)+?)\\*)|(?P<strike>~~(?P<strike_>(?:\\\\?.)+?)~~)|(?P<invert>%%(?P<invert_>(?:\\\\?.)+?)%%)|(?P<hyperlink>[a-z][a-z0-9+.-]*:(?:[,.?]?[^\\s(<>)\"',.?%]|%[0-9a-f]{2}|\\([^\\s(<>)\"']+\\))+)|(?P<namedlink>\\[(?P<link_name>.*?)\\]\\((?P<link_href>(?:[^()]+|\\(.*?\\)|[^)])*)\\))|(?P<text>[\\w_]*\\w)|(?P<escape>\\\\?(?P<escaped>.))";
+static const constexpr int  stage2_groups = 18;
 
 static const RE2        stage1_re2(stage1_re);
 static const RE2        stage2_re2(stage2_re);
@@ -62,8 +62,9 @@ template <typename T> auto stage2(std::string text) -> std::string
         auto lg = stage2_jit.lastgroup(groups, stage2_groups);
         auto rp =
             lg == "text"      ? groups[ 0].as_string()
-          : lg == "escape"    ? groups[14].as_string()
-          : lg == "hyperlink" ? "<a href=\"" + groups[0].as_string() + "\">" + groups[0].as_string() + "</a>"
+          : lg == "escape"    ? groups[17].as_string()
+          : lg == "hyperlink" ? "<a href=\"" + groups[ 0].as_string() + "\">" + groups[ 0].as_string() + "</a>"
+          : lg == "namedlink" ? "<a href=\"" + groups[14].as_string() + "\">" + groups[13].as_string() + "</a>"
           : lg == "code"      ? "<code>"                 + stage2<T>(groups[ 2].as_string()) + "</code>"
           : lg == "bold"      ? "<strong>"               + stage2<T>(groups[ 4].as_string()) + "</strong>"
           : lg == "italic"    ? "<em>"                   + stage2<T>(groups[ 6].as_string()) + "</em>"
