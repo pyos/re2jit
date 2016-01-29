@@ -30,11 +30,14 @@ bool match<re2jit::it>(const re2jit::it &regexp, const re2::StringPiece& text, R
 }
 
 
+static char GARBAGE_GROUP[] = { 'x', 0 };
+
+
 Result compare(bool am, bool bm, re2::StringPiece *a, re2::StringPiece *b, ssize_t n)
 {
     if (am != bm) return Result::Fail("invalid answer %d", am);
     if (am) for (ssize_t i = 0; i < n; i++, a++, b++)
-        if (*a != *b)
+        if (b->data() != GARBAGE_GROUP && *a != *b)
             return Result::Fail(
                 "group %zu incorrect\n"
                 "    expected [%d @ %p] '%.*s'\n"
