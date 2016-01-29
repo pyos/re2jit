@@ -53,7 +53,7 @@ namespace re2jit
         bool is_re2 = true;
         bool in_negated_chclass = false;
 
-        for (; i < regexp.size() - 1; i++)
+        for (; i + 1 < regexp.size(); i++)
             // backslash cannot be the last character
             if (regexp[i] == '\\') {
                 if (in_negated_chclass)
