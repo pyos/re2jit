@@ -17,6 +17,9 @@ namespace re2jit
         kUnicodeTypeGeneralNegated,
         kUnicodeTypeSpecificNegated,
         kBackreference,
+        #if RE2JIT_ENABLE_SUBROUTINES
+        kSubroutine,
+        #endif
     };
 
 
@@ -82,6 +85,31 @@ namespace re2jit
                           : neg                 ? kUnicodeTypeSpecificNegated
                           :                       kUnicodeTypeSpecific, *id);
                 }
+                #if RE2JIT_ENABLE_SUBROUTINES
+                else if (regexp[i + 1] == 'g') {
+                    // '\g<id>' -- attempt to match a group again,
+                    // then return back here.
+                    auto lp = i + 2;
+                    auto rp = i + 3;
+
+                    if (lp == regexp.size())
+                        goto unrecognized;  // invalid syntax: no group id
+
+                    if (regexp[lp] != '<' || (rp = regexp.find('>', ++lp)) == std::string::npos)
+                        goto unrecognized;  // invalid syntax: mismatched `<`
+
+                    char *e = NULL;
+                    long  r = strtol(&regexp[lp], &e, 10);
+
+                    if (e != &regexp[rp]) {
+                        printf("inv %.*s", (int) (rp - lp), &regexp[lp]);
+                        goto unrecognized;  // invalid syntax: non-int group id
+                    }
+
+                    i = _rewrite_inst(regexp, i, rp + 1, kSubroutine, r);
+                    is_re2 = false;
+                }
+                #endif
                 else if (isdigit(regexp[i + 1])) {
                     // \1234 -- backreference to group 1234.
                     char *e = NULL;

@@ -2,6 +2,10 @@
 #include <vector>
 #include <sys/mman.h>
 
+#if RE2JIT_ENABLE_SUBROUTINES
+#include <map>
+#endif
+
 #include "asm64.h"
 
 // `&NFA->input` -- like offsetof, but shorter and with 100% more undefined behavior.
@@ -31,12 +35,38 @@ struct re2jit::native
         //   3. find out changing which groups would require resetting the state bitmap
         std::vector<unsigned> indegree(prog->size());
         std::set   <unsigned> backrefs;
+        #if RE2JIT_ENABLE_SUBROUTINES
+        std::map   <unsigned, unsigned> subcalls;
+        #endif
 
         DFS(indegree) {
             auto op  = prog->inst(*it);
             auto ext = re2jit::get_extcode(prog, op);
 
             for (auto& op : ext) switch (op.opcode) {
+                #if RE2JIT_ENABLE_SUBROUTINES
+                case re2jit::kSubroutine: {
+                    int i = 0;
+
+                    for (; i < prog->size(); i++) {
+                        auto inst = prog->inst(i);
+
+                        if (inst->opcode() == re2::kInstCapture && inst->cap() % 2 == 0
+                                                                && inst->cap() / 2 == op.arg)
+                            break;
+                    }
+
+                    if (i == prog->size())
+                        // fatal: invalid group id
+                        return;
+
+                    subcalls.insert({ op.arg, (unsigned) i });
+                    VISIT((unsigned) i);
+                    VISIT(op.out);
+                    break;
+                }
+                #endif
+
                 case re2jit::kBackreference:
                     backrefs.insert(op.arg);
 
@@ -134,6 +164,16 @@ struct re2jit::native
                         VISIT(op->out);
                         break;
 
+                    #if RE2JIT_ENABLE_SUBROUTINES
+                    case re2jit::kSubroutine:
+                        code.mov(labels[subcalls[op->arg]], as::rsi)
+                            .mov(labels[op->out], as::rdx)
+                            .mov(as::i32(op->arg), as::ecx)
+                            .jmp(&rejit_thread_subcall_push);
+                        VISIT(op->out);
+                        break;
+                    #endif
+
                     case re2jit::kBackreference:
                         // if (nfa->groups <= arg * 2) return;
                         code.cmp (as::i32(op->arg * 2), as::mem(as::rdi + &NFA->groups))
@@ -218,7 +258,7 @@ struct re2jit::native
                     break;
                 }
 
-                case re2::kInstCapture:
+                case re2::kInstCapture: {
                     // if (nfa->groups <= cap) goto out;
                     code.cmp  (as::i32(op->cap()), as::mem(as::rdi + &NFA->groups))
                         .jmp  (labels[op->out()], as::less_equal_u)
@@ -233,12 +273,25 @@ struct re2jit::native
                         .push (as::rdx)
                         .push (as::rcx);
 
+                    #if RE2JIT_ENABLE_SUBROUTINES
+                    as::label skip_normal;
+
+                    if (op->cap() % 2 && subcalls.find(op->cap() / 2) != subcalls.end())
+                        code.mov (as::i32(op->cap() / 2), as::esi)
+                            .push(as::rdi).call(&rejit_thread_subcall_pop).pop(as::rdi)
+                            .test(as::rax, as::rax).jmp(skip_normal, as::zero);
+                    #endif
+
                     if (backrefs.find(op->cap() / 2) != backrefs.end())
                         code.push(as::rdi).call(&rejit_thread_bitmap_save)   .pop(as::rdi)
                             .push(as::rdi).call(labels[op->out()])           .pop(as::rdi)
                             .push(as::rax).call(&rejit_thread_bitmap_restore).pop(as::rax);
                     else
                         code.call(labels[op->out()]);
+
+                    #if RE2JIT_ENABLE_SUBROUTINES
+                    code.mark(skip_normal);
+                    #endif
 
                     // nfa->running->groups[cap] = edx;
                     code.pop(as::rcx)
@@ -247,6 +300,7 @@ struct re2jit::native
                         .ret();
                     VISIT(op->out());
                     break;
+                }
 
                 case re2::kInstEmptyWidth:
                     // if (!rejit_thread_satisfies(nfa, empty)) return;

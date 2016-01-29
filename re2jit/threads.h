@@ -30,6 +30,17 @@ extern "C" {
     };
 
 
+    #if RE2JIT_ENABLE_SUBROUTINES
+    struct rejit_subcall_t
+    {
+        struct rejit_subcall_t *next;
+        const void *state;
+        unsigned group;
+        unsigned refcnt;
+    };
+    #endif
+
+
     struct rejit_threadq_t
     {
         RE2JIT_LIST_LINK(struct rejit_threadq_t);
@@ -47,6 +58,9 @@ extern "C" {
         struct rejit_threadq_t queue;
         // actual meaning of state determined by closure computation algorithm used.
         const void *state;
+        #if RE2JIT_ENABLE_SUBROUTINES
+        struct rejit_subcall_t *substack;
+        #endif
         // group `i` spans the input from `groups[2i]`-th character to `groups[2i+1]`-th.
         // if either bound is -1, the group did not match. 0-th group is the whole match.
         unsigned groups[];
@@ -119,6 +133,17 @@ extern "C" {
 
     /* Restore a previously saved bitmap because we've reverted to the previous state. */
     void rejit_thread_bitmap_restore(struct rejit_threadset_t *);
+
+    #if RE2JIT_ENABLE_SUBROUTINES
+    /* Push a state onto the stack. A group id is used to determine when to pop it
+     * and jump to the return address. Returns 1 on error (out of memory). */
+    int rejit_thread_subcall_push(struct rejit_threadset_t *, const void *state,
+                                                              const void *ret, unsigned);
+
+    /* Try to pop a state off the stack. Returns 1 if the id is wrong, meaning
+     * we should simply continue on to the next state. */
+    int rejit_thread_subcall_pop(struct rejit_threadset_t *, unsigned);
+    #endif
 
 #ifdef __cplusplus
 }
