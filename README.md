@@ -31,6 +31,8 @@ There's [a generator of Unicode support tables](https://github.com/pyos/re2jit/b
 (Slow Unicode charclass matching is part of why I was dissatisfied with re2.) With
 [fancy 2-stage lookup tables](http://www.strchr.com/multi-stage_tables) and everything.
 
+*Update: new versions of re2 have significantly improved Unicode charclass performance. Check them out!*
+
 Most importantly, there's [this fine piece of software](https://github.com/pyos/re2jit/blob/master/re2jit/it.x64.cc)
 which converts hand-written x86-64 asm into opcodes, inserting constants where appropriate,
 reordering instructions, eliminating dead code, etc., etc., and writing it all into
