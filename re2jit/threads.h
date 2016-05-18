@@ -37,6 +37,7 @@ extern "C" {
         const void *state;
         unsigned group;
         unsigned refcnt;
+        unsigned groups[];
     };
     #endif
 

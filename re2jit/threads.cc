@@ -67,7 +67,7 @@ static struct rejit_thread_t *rejit_thread_fork(struct rejit_threadset_t *r)
     if (t == NULL) return NULL;
 
     rejit_list_append(c->prev, t);
-    memcpy(t->groups, c->groups, sizeof(int) * r->groups);
+    memcpy(t->groups, c->groups, sizeof(unsigned) * r->groups);
     t->queue.bitmap = c->queue.bitmap;
     #if RE2JIT_ENABLE_SUBROUTINES
     if ((t->substack = c->substack))
@@ -287,7 +287,8 @@ int rejit_thread_subcall_push(struct rejit_threadset_t *r, const void *state,
 {
     struct rejit_thread_t  *t = r->running;
     struct rejit_subcall_t *s = t->substack;
-    struct rejit_subcall_t *q = (struct rejit_subcall_t *) malloc(sizeof(struct rejit_subcall_t));
+    struct rejit_subcall_t *q = (struct rejit_subcall_t *) malloc(
+        sizeof(struct rejit_subcall_t) + sizeof(unsigned) * r->groups);
 
     if (q == NULL) {
         rejit_thread_free(r);
@@ -298,6 +299,7 @@ int rejit_thread_subcall_push(struct rejit_threadset_t *r, const void *state,
     q->state  = ret;
     q->group  = group;
     q->refcnt = 1;
+    memcpy(q->groups, t->groups, sizeof(unsigned) * r->groups);
     if (s) s->refcnt++;
 
     rejit_thread_bitmap_save(r);
@@ -321,10 +323,14 @@ int rejit_thread_subcall_pop(struct rejit_threadset_t *r, unsigned group)
     if (s->group != group)
         return 1;
 
+    unsigned groups[r->groups];
+    memcpy(groups, t->groups, sizeof(groups));
     rejit_thread_bitmap_save(r);
     t->substack = s->next;
+    memcpy(t->groups, s->groups, sizeof(groups));
     r->entry(r, s->state);
     t->substack = s;
+    memcpy(t->groups, groups, sizeof(groups));
     rejit_thread_bitmap_restore(r);
     return 0;
 }
