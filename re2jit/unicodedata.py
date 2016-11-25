@@ -98,6 +98,9 @@ writeinto(os.path.join(os.path.dirname(__file__), 'unicodedata.cc'),
     #include <string.h>
     // gperf declares the lookup function as gnu_inline but not static.
     // that still breaks linkage for some reason.
+    #ifdef __inline
+    #undef __inline
+    #endif
     #define __inline
     #define __gnu_inline__
 
