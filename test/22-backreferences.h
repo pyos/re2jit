@@ -1,7 +1,7 @@
 #include "00-definitions.h"
 #include "framework.h"
 #include <stdio.h>
-
+#include <vector>
 
 // http://perl5.git.perl.org/perl.git/blob/d5e45555fc406945bd8e4694adaab59e4f99120e:/t/japh/abigail.t#l74
 #define REGEX_PRIMALITY_TEST(input, expect)                                                   \
@@ -22,6 +22,10 @@ static inline std::string operator * (const std::string& x, int n)
     std::string r; while (n--) r += x; return r;
 }
 
+static inline int abs(int x)
+{
+    return x < 0 ? -x : x;
+}
 
 // http://perl.plover.com/NPC/NPC-3SAT.html
 static inline bool regex_3sat(int inputs, int clauses, int (*cl)[3], char *out)
