@@ -58,7 +58,7 @@ _require_test_run = \
 
 ARCHIVE = ar rcs
 INSTALL = install -D
-PYTHON3 = /usr/bin/python3
+PYTHON3 = python3
 CCFLAGS = ./ccflags
 DYNLINK = $(CC) -shared -o
 COMPILE = $(CXX) $(CXXFLAGS) $(_options) -std=c++11 -I. -I./re2 -fPIC -fno-strict-aliasing
