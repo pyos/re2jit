@@ -48,30 +48,43 @@ Result compare(bool am, bool bm, re2::StringPiece *a, re2::StringPiece *b, ssize
 }
 
 
-#if __APPLE__
+#if __APPLE__ && __MACH__
+#include <mach/clock.h>
+#include <mach/mach.h>
 
-template <typename F> double measure(int, const F&&)
-{
-    return 0;
+static clock_serv_t mach_clock;
+
+static void __attribute__((constructor)) mach_clock_init(void) {
+    host_get_clock_service(mach_host_self(), SYSTEM_CLOCK, &mach_clock);
 }
 
+static void __attribute__((destructor)) mach_clock_fini(void) {
+    mach_port_deallocate(mach_task_self(), mach_clock);
+}
+#endif
+
+
+static inline struct timespec clock_monotonic(void) {
+#if __APPLE__ && __MACH__
+    mach_timespec_t val;
+    clock_get_time(mach_clock, &val);
 #else
+    struct timespec val;
+    clock_gettime(CLOCK_MONOTONIC, &val);
+#endif
+    return (struct timespec){val.tv_sec, val.tv_nsec};
+}
+
 
 template <typename F> double measure(int k, const F&& fn)
 {
-    struct timespec start;
-    struct timespec end;
-    clock_gettime(CLOCK_MONOTONIC, &start);
-
+    struct timespec start = clock_monotonic();
     while (k--) fn();
-
-    clock_gettime(CLOCK_MONOTONIC, &end);
+    struct timespec end = clock_monotonic();
     auto s = end.tv_sec  - start.tv_sec;
     auto n = end.tv_nsec - start.tv_nsec;
     return n * 1e-9 + s;
 }
-
-#endif
 
 
 #define GENERIC_TEST(name, regex, anchor, _input, ngroups, __fn, answer, ...) \
