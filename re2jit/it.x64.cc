@@ -147,8 +147,10 @@ struct re2jit::native
                             .movzb(as::al,    as::ecx)
                             .and_ (0x1FFFFFu, as::eax)
                             .shr  (8,         as::eax)
-                            .add  (as::mem(as::p32(UNICODE_CATEGORY_1) + as::rax * 4), as::ecx)
-                            .movzb(as::mem(as::p32(UNICODE_CATEGORY_2) + as::rcx),     as::eax);
+                            .mov  (as::i64(UNICODE_CATEGORY_1), as::rsi)
+                            .mov  (as::i64(UNICODE_CATEGORY_2), as::r8)
+                            .add  (as::mem(as::rsi + as::rax * 4), as::ecx)
+                            .movzb(as::mem(as::r8  + as::rcx), as::eax);
 
                         if (op->opcode == re2jit::kUnicodeTypeGeneral)
                             code.and_(UNICODE_CATEGORY_GENERAL, as::eax);
